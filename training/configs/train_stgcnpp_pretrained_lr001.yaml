@@ -1,0 +1,51 @@
+# Phase 3.14 — NTU60-pretrained fine-tune at lr 1e-3 (suggested fine-tuning range).
+# Single variable vs configs/train_stgcnpp_pretrained_lr002.yaml (E-08): train.lr 0.002 -> 0.001.
+# Everything else (weights, optimiser, 30 epochs, loss, class weights, augmentation) is unchanged.
+# Context: E-05 (lr 0.02) destroyed the pretrained features; E-08 (lr 0.002) recovered
+# precision and FAR. This point tests the 1e-3 recommendation.
+
+data:
+  ann_file: datasets/pyskl/v2/annotations.pkl
+  clip_len: 64
+  num_person: 1
+  num_classes: 2
+  class_names: [non_fall, fall]
+  batch_size: 16
+  num_workers: 2
+
+model:
+  type: RecognizerGCN
+  backbone:
+    type: STGCN
+    gcn_adaptive: init
+    gcn_with_res: true
+    tcn_type: mstcn
+    graph_cfg:
+      layout: coco
+      mode: spatial
+  cls_head:
+    type: GCNHead
+    num_classes: 2
+    in_channels: 256
+
+train:
+  epochs: 30
+  optimizer: SGD
+  lr: 0.001
+  momentum: 0.9
+  weight_decay: 0.0005
+  nesterov: true
+  scheduler: cosine
+  eta_min_ratio: 0.01
+  seed: 42
+  device: cuda
+  class_weights: null
+  pretrained: weights/ntu60_xsub_hrnet_j.pth
+  eval_every: 1
+
+eval:
+  threshold: 0.5
+
+output:
+  run_dir: runs/stgcnpp_v2_pretrained_lr001
+  report: reports/train_stgcnpp_v2_pretrained_lr001.md

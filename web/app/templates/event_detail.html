@@ -1,0 +1,298 @@
+{# ==========================================================================
+   事件详情片段（抽屉内容 / 整页复用）
+   上下文：event（含 actions[] 与 snapshot 元信息）、user
+   铁律：不显示患者姓名；不显示百分比概率；技术字段默认折叠。
+   ========================================================================== #}
+{% from "_macros.html" import icon, sev_tag, detection_tag, disposition_tag, dual_state, snapshot, fmt_time, fmt_datetime, iso, model_ver, prob_text, ratio_text, duration_text, empty_state, detail_actions, OUTCOME_LABELS %}
+
+{% set role = user.role if user is defined and user else 'nurse' %}
+{% set state = event.disposition_state %}
+{% set detection = event.detection_state %}
+{% set action_list = event.actions if event.actions is defined and event.actions else (actions if actions is defined and actions else []) %}
+{% set action_labels = {
+  'ACK': '接警',
+  'ARRIVE': '到场',
+  'RESOLVE': '完成处置',
+  'FALSE_ALARM': '标记误报',
+  'CLOSE': '归档',
+  'REOPEN': '重开',
+  'NOTE': '备注',
+  'RETRACT': '模型撤回'
+} %}
+{#- 2026-11-07：处置结果词表已提到 _macros.html::OUTCOME_LABELS（审计 detail 渲染也要用）。
+    本页**展示与表单选项都从这份取**——只改展示不改表单，就会出现「选的叫需医生处理、
+    记下来叫 MEDICAL」。 -#}
+{% set outcome_labels = OUTCOME_LABELS %}
+{% set reason_labels = {
+  'MODEL_MISJUDGE': '模型误判',
+  'OCCLUSION': '遮挡 / 逆光',
+  'NOT_PATIENT': '不是患者（家属 / 医护）',
+  'DUPLICATE': '重复事件',
+  'OTHER': '其他'
+} %}
+{#- 时间线上的状态流转。原样渲染 PENDING→ACKED 这种英文枚举，病房里没人看得懂；
+    这里给出中文名，拼错或新增状态时退回原值而不是留空。 -#}
+{% set state_labels = {
+  'PENDING': '待接警',
+  'ACKED': '已接警',
+  'ON_SCENE': '已到场',
+  'RESOLVED': '已处置',
+  'FALSE_ALARM': '误报',
+  'CLOSED': '已归档',
+  'CONFIRMED': '已确认',
+  'RETRACTED': '模型已撤回'
+} %}
+
+<div class="fg-detail" data-event-uid="{{ event.event_uid }}"
+     data-revision="{{ event.revision if event.revision is not none else 0 }}">
+
+  {# ---------- 标题行 ---------- #}
+  <div class="fg-flex-between fg-gap-3">
+    <div>
+      <div class="fg-detail__title">
+        事件 {{ event.location or '—' }} / #{{ event.board_seq if event.board_seq is not none else ((event.event_uid|string)[:4] if event.event_uid else '—') }}
+        {% if event.is_test %}<span class="fg-tag fg-tag--test">测试数据</span>{% endif %}
+      </div>
+      <div class="fg-small fg-muted">
+        {{ fmt_time(event.received_at) }}
+        {% if event.person_id is not none %} · 人员#{{ event.person_id }}{% endif %}
+        · 已等待 <span data-wait-since="{{ iso(event.received_at) }}">--:--</span>
+      </div>
+    </div>
+    {% if not detail_embedded %}
+    <button type="button" class="fg-drawer__close" data-drawer-close aria-label="关闭详情">
+      {{ icon('x', 20) }}
+    </button>
+    {% endif %}
+  </div>
+
+  {# ---------- 快照 ---------- #}
+  <div class="fg-detail__section">
+    {{ snapshot(event, thumb=false, extra_class='fg-snap--lg') }}
+    {#- V2：去掉「板端上传 · 320×240 · bbox 坐标系不同」这类实现说明。
+        有图就看图；没图才需要一句解释，且只说结论不说机制。 -#}
+    <div class="fg-flex-between fg-mt-2">
+      {% if event.has_snapshot is defined and event.has_snapshot %}
+      <span></span>
+      <a class="fg-btn fg-btn--ghost fg-btn--sm" target="_blank" rel="noopener"
+         href="/api/v1/events/{{ event.event_uid }}/snapshot">查看原图</a>
+      {% else %}
+      <span class="fg-small fg-muted">无快照</span>
+      {% endif %}
+    </div>
+  </div>
+
+  {# ---------- 告警片段（P9 ③：前 5 s + 后 5 s） ---------- #}
+  <div class="fg-detail__section" id="fg-clip-section"
+       data-event-uid="{{ event.event_uid }}" data-clip-status="{{ event.clip_status or '' }}">
+    {% if event.has_clip %}
+    <video class="fg-clip" controls preload="metadata" playsinline
+           src="/api/v1/events/{{ event.event_uid }}/clip"></video>
+    {#- V2：去掉「前 5 秒 + 后 5 秒 / 从推流录制切出 / 不重编码」——
+        播放器已经在放了，这段窗口是怎么来的对现场判断毫无用处。 -#}
+    <div class="fg-flex-between fg-mt-2">
+      <span></span>
+      <a class="fg-btn fg-btn--ghost fg-btn--sm" target="_blank" rel="noopener"
+         href="/api/v1/events/{{ event.event_uid }}/clip">新窗口播放</a>
+    </div>
+    {% elif event.clip_status == 'PENDING' %}
+    <div class="fg-note">
+      {{ icon('clock', 18) }}
+      <span>片段生成中，约 15 秒后自动出现，<b>无需刷新</b>。</span>
+    </div>
+    {% elif event.clip_status == 'FAILED' %}
+    <div class="fg-note">
+      {{ icon('alert', 18) }}
+      {% if event.clip_expired %}
+      <span>片段已过保留期被清理。需要长期留存请先导出。</span>
+      {% else %}
+      <span>片段生成失败，请联系信息处。</span>
+      {% endif %}
+    </div>
+    {% else %}
+    <div class="fg-note">
+      {{ icon('alert', 18) }}
+      <span>无片段：该事件发生在片段功能启用之前。</span>
+    </div>
+    {% endif %}
+  </div>
+
+  {# ---------- 双状态 ---------- #}
+  <div class="fg-detail__section">
+    {{ dual_state(event) }}
+    {% if detection == 'RETRACTED' %}
+    <div class="fg-note fg-mt-2">
+      {{ icon('alert', 18) }}
+      {% if event.ever_confirmed %}
+      <span>模型<b>当时已确认</b>并发出过告警，之后在后续窗口撤回了判定（通常是跌倒者已起身）。
+        这次告警仍计入告警数，人工处置不受影响。</span>
+      {% else %}
+      <span>这次撤回先于任何确认到达，未匹配到确认记录，不计入告警数。人工处置不受影响。</span>
+      {% endif %}
+    </div>
+    {% endif %}
+  </div>
+
+  {# ---------- 第一眼 / 第二眼字段 ---------- #}
+  <div class="fg-detail__section">
+    <div class="fg-detail__grid">
+      <div>
+        <span class="fg-detail__k">级别</span>
+        <span class="fg-detail__v">{{ sev_tag(event.severity) }}</span>
+      </div>
+      <div>
+        <span class="fg-detail__k">点位</span>
+        <span class="fg-detail__v">{{ event.location or '—' }}</span>
+      </div>
+      <div>
+        <span class="fg-detail__k">人员号</span>
+        <span class="fg-detail__v">人员#{{ event.person_id if event.person_id is not none else '—' }}</span>
+      </div>
+      {#- 模型侧参数按角色收口：护士端不显示。
+          护士站是半公共区域，屏幕朝走廊；「0.81（未校准）」「v0002A3F1」这类数字
+          既不能指导处置，也不该出现在敞开的屏幕上。护士长保留 —— 她要做复盘与质控，
+          判断「这个点位是不是模型老误报」需要看这些。 -#}
+      {% if role != 'nurse' %}
+      <div>
+        <span class="fg-detail__k">模型原始分</span>
+        <span class="fg-detail__v fg-detail__v--mono">{{ prob_text(event.prob_fall) }}</span>
+      </div>
+      <div>
+        <span class="fg-detail__k">覆盖率</span>
+        <span class="fg-detail__v fg-detail__v--mono">{{ ratio_text(event.coverage) }}</span>
+      </div>
+      <div>
+        <span class="fg-detail__k">模型版本</span>
+        <span class="fg-detail__v fg-detail__v--mono">v{{ model_ver(event.model_ver) }}</span>
+      </div>
+      {% endif %}
+      <div>
+        <span class="fg-detail__k">处置人</span>
+        <span class="fg-detail__v">{{ event.assignee.display_name if event.assignee is defined and event.assignee else '—' }}</span>
+      </div>
+      <div>
+        <span class="fg-detail__k">接收时间</span>
+        <span class="fg-detail__v fg-detail__v--mono">{{ fmt_datetime(event.received_at) }}</span>
+      </div>
+    </div>
+  </div>
+
+  {# ---------- 处置动作 ----------
+     detail_actions_hidden：工作台工作区把按钮钉在面板底部（不随长内容滚走），
+     这里就不要再画一遍——同一屏出现两组「完成处置」，点哪个都心虚。
+     ⚠️ 只藏按钮，不藏处置表单：底部「完成处置」要靠展开这个表单才能提交。 #}
+  <div class="fg-detail__section">
+    {% if not detail_actions_hidden %}
+    <div class="fg-btn-group fg-detail__actions">
+      {{ detail_actions(event, role) }}
+    </div>
+    {% endif %}
+
+    {% if role == 'nurse' and state in ['ACKED', 'ON_SCENE'] %}
+    {# 处置表单：默认收起，点「处置」后展开 #}
+    <form class="fg-panel fg-mt-4" data-action-form data-action="RESOLVE"
+          data-event-uid="{{ event.event_uid }}"
+          data-revision="{{ event.revision if event.revision is not none else 0 }}" hidden>
+      <div class="fg-panel__head">
+        <h3 class="fg-panel__title">处置结果</h3>
+        <span class="fg-panel__sub">必选一项</span>
+      </div>
+      <div class="fg-panel__body">
+        <div class="fg-choices" role="radiogroup" aria-label="处置结果">
+          {#- 选项从 outcome_labels 生成：展示与表单同一份词表，改一处两边同时变。 -#}
+          {% for _val, _label in outcome_labels.items() %}
+          <label class="fg-choice"><input type="radio" name="outcome" value="{{ _val }}"{% if loop.first %} required{% endif %}><span class="fg-choice__box"></span>{{ _label }}</label>
+          {% endfor %}
+        </div>
+
+        <div class="fg-field fg-mt-4">
+          <label class="fg-label" for="resolve-note-{{ event.event_uid }}">备注（可选，≤ 200 字）</label>
+          <textarea class="fg-textarea" id="resolve-note-{{ event.event_uid }}" name="note"
+                    maxlength="200" placeholder="记录现场情况，便于护士长复核"></textarea>
+        </div>
+        <div class="fg-error-text" data-form-error hidden></div>
+      </div>
+      <div class="fg-panel__foot">
+        <button type="submit" class="fg-btn fg-btn--primary">提交处置</button>
+      </div>
+    </form>
+    {% endif %}
+  </div>
+
+  {# ---------- 时间线（证据层） ---------- #}
+  <div class="fg-detail__section">
+    <h3 class="fg-detail__title">处置时间线</h3>
+    {% if action_list %}
+    <div class="fg-timeline">
+      {% for action in action_list %}
+      <div class="fg-timeline__item fg-timeline__item--done">
+        <div class="fg-timeline__time">{{ fmt_time(action.created_at, '%m-%d %H:%M:%S') }}</div>
+        <div class="fg-timeline__text">
+          <strong>{{ action.actor.display_name if action.actor is defined and action.actor else (action.actor_name if action.actor_name is defined and action.actor_name else '系统') }}</strong>
+          · {{ action_labels.get(action.action, action.action) }}
+          {% if action.from_state or action.to_state %}
+          <span class="fg-muted">（{{ state_labels.get(action.from_state, action.from_state) or '—' }} → {{ state_labels.get(action.to_state, action.to_state) or '—' }}）</span>
+          {% endif %}
+          {% if action.outcome %}
+          <span class="fg-muted">· {{ outcome_labels.get(action.outcome, action.outcome) }}</span>
+          {% endif %}
+          {#- 撤回动作的 reason 是板端原样传上来的自由字符串（见 ingest._record_retract_action），
+              不是固定枚举，标签表盖不住。与其把英文码甩给护士，不如不显示——
+              上面那行「模型撤回」加上双状态说明已经说清了。 -#}
+          {% if action.reason and action.action != 'RETRACT' %}
+          <span class="fg-muted">· {{ reason_labels.get(action.reason, action.reason) }}</span>
+          {% endif %}
+        </div>
+        {% if action.note %}
+        <div class="fg-timeline__note">{{ action.note }}</div>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+      {{ empty_state('暂无处置记录', '', '', '', 'clock') }}
+    {% endif %}
+  </div>
+
+  {#- V2：原「技术详情」折叠块（event_uid / board_seq / board_ts / window_start·end /
+      model_ver / revision / orphan_retract·is_test）已删。这些是排障字段，护士与护士长
+      都不会据此改变任何动作，留在临床界面上只是噪声。
+      需要定位某条事件时，走审计页或数据库按 board_seq / 接收时间反查。 -#}
+</div>
+
+{# ---------- 误报二次确认 ---------- #}
+<div class="fg-modal-root" id="fg-false-modal" hidden>
+  <div class="fg-modal-overlay" data-modal-close></div>
+  <div class="fg-modal" role="dialog" aria-modal="true" aria-labelledby="fg-false-title">
+    <div class="fg-modal__head">
+      <h2 class="fg-modal__title" id="fg-false-title">标记为误报？</h2>
+      <button type="button" class="fg-drawer__close" data-modal-close aria-label="关闭">{{ icon('x', 20) }}</button>
+    </div>
+    <form data-action-form data-action="FALSE_ALARM"
+          data-event-uid="{{ event.event_uid }}"
+          data-revision="{{ event.revision if event.revision is not none else 0 }}">
+      <div class="fg-modal__body">
+        <p class="fg-modal__text">误报会进入独立的模型评估口径，不能撤销。请选择原因。</p>
+        <div class="fg-choices fg-mt-4" role="radiogroup" aria-label="误报原因">
+          <label class="fg-choice"><input type="radio" name="reason" value="MODEL_MISJUDGE" required><span class="fg-choice__box"></span>模型误判</label>
+          <label class="fg-choice"><input type="radio" name="reason" value="OCCLUSION"><span class="fg-choice__box"></span>遮挡 / 逆光</label>
+          <label class="fg-choice"><input type="radio" name="reason" value="NOT_PATIENT"><span class="fg-choice__box"></span>不是患者（家属 / 医护）</label>
+          <label class="fg-choice"><input type="radio" name="reason" value="DUPLICATE"><span class="fg-choice__box"></span>重复事件</label>
+          <label class="fg-choice"><input type="radio" name="reason" value="OTHER"><span class="fg-choice__box"></span>其他</label>
+        </div>
+        <div class="fg-field fg-mt-4">
+          <label class="fg-label" for="false-note-{{ event.event_uid }}">备注（可选）</label>
+          <textarea class="fg-textarea" id="false-note-{{ event.event_uid }}" name="note" maxlength="200"></textarea>
+        </div>
+        <div class="fg-error-text fg-mt-3" data-form-error hidden></div>
+      </div>
+      <div class="fg-modal__foot">
+        <button type="button" class="fg-btn fg-btn--secondary" data-modal-close>取消</button>
+        <button type="submit" class="fg-btn fg-btn--danger-solid">确认标记误报</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{# ---------- 护士长重开（与台账页共用同一份 partial） ---------- #}
+{% include "_reopen_modal.html" %}

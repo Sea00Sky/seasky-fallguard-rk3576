@@ -1,0 +1,254 @@
+{# ==========================================================================
+   ⚠️ 2026-11-04 起**已无消费者**（随 _live_panel.html 一起退役）。
+   现役播放器是 /static/camera-live.js：按点位绑定、先探状态、冷却按流隔离。
+
+   实时画面 · 播放脚本（可复用）
+   必须放在 {% block scripts %} 内，且页面里已经 include 了 _live_panel.html
+
+   播放策略：**WebRTC 优先，失败回落 HLS**
+   - WebRTC(WHEP)：延迟 0.2–0.5s，但媒体走 UDP 8189 直连；
+     该端口被安全组挡住时，WHEP 仍会返回 201，只是 ontrack 永远不触发
+     ⇒ 必须靠超时判定 + 回落，否则页面就是一片黑。
+   - HLS：延迟 2–3s，纯 HTTP，只要能登录就能看。保底。
+   ========================================================================== #}
+<script>
+(function () {
+  var root = document.querySelector('[data-live-root]');
+  var btn = document.querySelector('[data-live-toggle]');
+  if (!root || !btn) return;
+
+  var video = root.querySelector('[data-live-video]');
+  var ph = root.querySelector('[data-live-ph]');
+  var stateEl = root.querySelector('[data-live-state]');
+
+  var WHEP_URL = '/api/v1/live/whep';
+  var HLS_PLAYLIST = '/api/v1/live/index.m3u8';
+  var HLS_JS = '/static/vendor/hls.light.min.js';
+
+  var pc = null;          // RTCPeerConnection
+  var sessionUrl = null;  // WHEP 会话地址（DELETE 用）
+  var hls = null;
+  var busy = false;
+  var clearTimer = null;
+
+  // WebRTC 失败记忆：UDP 8189 被挡时每次都要等满超时才回落，
+  // 连点两次播放就白等 12 秒。同一标签页 10 分钟内不再重试，直接走 HLS。
+  var WHEP_COOLDOWN_MS = 10 * 60 * 1000;
+
+  function webrtcRecentlyFailed() {
+    try {
+      var t = parseInt(sessionStorage.getItem('fg_live_whep_fail') || '0', 10);
+      return t > 0 && (Date.now() - t) < WHEP_COOLDOWN_MS;
+    } catch (e) { return false; }
+  }
+
+  function markWebrtcFailed() {
+    try { sessionStorage.setItem('fg_live_whep_fail', String(Date.now())); } catch (e) {}
+  }
+
+  function clearWebrtcFailed() {
+    try { sessionStorage.removeItem('fg_live_whep_fail'); } catch (e) {}
+  }
+
+  function setState(text, kind) {
+    if (clearTimer) { clearTimeout(clearTimer); clearTimer = null; }
+    if (!text) { stateEl.hidden = true; stateEl.textContent = ''; return; }
+    stateEl.hidden = false;
+    stateEl.textContent = text;
+    stateEl.dataset.kind = kind || 'info';
+  }
+
+  function clearStateIn(ms) {
+    if (clearTimer) clearTimeout(clearTimer);
+    clearTimer = setTimeout(function () { setState(''); }, ms);
+  }
+
+  function showVideo() {
+    video.hidden = false;
+    ph.hidden = true;
+    root.classList.add('is-playing');
+    btn.textContent = '停止';
+    btn.setAttribute('aria-pressed', 'true');
+    var p = video.play();
+    if (p && p.catch) p.catch(function () { /* 自动播放被拦时用原生控件 */ });
+  }
+
+  // ── WebRTC ──────────────────────────────────────────────────────
+  function webrtc() {
+    return new Promise(function (resolve, reject) {
+      var finished = false;
+      function fail(msg) {
+        if (finished) return;
+        finished = true;
+        try { if (pc) pc.close(); } catch (e) {}
+        pc = null;
+        reject(new Error(msg));
+      }
+      function done() {
+        if (finished) return;
+        finished = true;
+        resolve();
+      }
+
+      pc = new RTCPeerConnection({
+        iceServers: [],                 /* 服务器有公网 IP，不需要 STUN */
+        bundlePolicy: 'max-bundle'
+      });
+      /* 骨架叠加层（_live_overlay_js.html）要用 getStats 估端到端延迟，
+         这里把连接对象与当前传输方式挂到 window 上，两个 IIFE 之间唯一的接口。 */
+      window.__fgLivePc = pc;
+      window.__fgLiveMode = 'webrtc';
+
+      pc.ontrack = function (ev) {
+        video.srcObject = ev.streams[0];
+        done();
+      };
+      pc.onconnectionstatechange = function () {
+        if (!pc) return;
+        if (pc.connectionState === 'failed') fail('ICE 连接失败');
+        if (pc.connectionState === 'disconnected') fail('ICE 断开');
+      };
+
+      pc.addTransceiver('video', { direction: 'recvonly' });
+
+      // 整体超时：WHEP 成功但 UDP 不通时，只会静默卡在这里
+      var guard = setTimeout(function () { fail('超时'); }, 6000);
+
+      pc.createOffer()
+        .then(function (offer) { return pc.setLocalDescription(offer); })
+        .then(function () {
+          // 等 ICE 收集完再发（不配 STUN，几乎瞬时）。
+          // non-trickle 省掉一路 PATCH 转发，代价是启动多几十毫秒。
+          return new Promise(function (res) {
+            if (pc.iceGatheringState === 'complete') return res();
+            pc.addEventListener('icegatheringstatechange', function () {
+              if (pc.iceGatheringState === 'complete') res();
+            });
+            setTimeout(res, 2000);
+          });
+        })
+        .then(function () {
+          return fetch(WHEP_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/sdp' },
+            body: pc.localDescription.sdp
+          });
+        })
+        .then(function (r) {
+          if (r.status !== 201) throw new Error('WHEP ' + r.status);
+          sessionUrl = r.headers.get('Location');
+          return r.text();
+        })
+        .then(function (answer) {
+          return pc.setRemoteDescription({ type: 'answer', sdp: answer });
+        })
+        .then(function () { clearTimeout(guard); })
+        .catch(function (err) { clearTimeout(guard); fail(err.message || 'WebRTC 失败'); });
+    });
+  }
+
+  // ── HLS（回落）──────────────────────────────────────────────────
+  function loadHlsJs() {
+    if (window.Hls) return Promise.resolve();
+    return new Promise(function (resolve, reject) {
+      var s = document.createElement('script');
+      s.src = HLS_JS;
+      s.onload = resolve;
+      s.onerror = function () { reject(new Error('hls.js 加载失败')); };
+      document.head.appendChild(s);
+    });
+  }
+
+  function hlsPlay() {
+    window.__fgLiveMode = 'hls';        /* 叠加层据此改用固定延迟估值 */
+    return loadHlsJs().then(function () {
+      if (window.Hls && window.Hls.isSupported()) {
+        hls = new window.Hls({ lowLatencyMode: true, liveSyncDurationCount: 3 });
+        hls.on(window.Hls.Events.ERROR, function (_e, data) {
+          if (data && data.fatal) setState('播放中断：' + (data.details || data.type), 'error');
+        });
+        hls.loadSource(HLS_PLAYLIST);
+        hls.attachMedia(video);
+        return;
+      }
+      if (video.canPlayType('application/vnd.apple.mpegurl')) {
+        video.src = HLS_PLAYLIST;      /* Safari 原生 HLS */
+        return;
+      }
+      throw new Error('当前浏览器不支持播放');
+    });
+  }
+
+  // ── 控制 ────────────────────────────────────────────────────────
+  function stop() {
+    if (sessionUrl) {
+      // 必须 DELETE：不结束会话，上游会一直按"有观众"往外送流
+      try { fetch(sessionUrl, { method: 'DELETE', keepalive: true }); } catch (e) {}
+      sessionUrl = null;
+    }
+    if (pc) { try { pc.close(); } catch (e) {} pc = null; }
+    window.__fgLivePc = null;
+    window.__fgLiveMode = null;
+    if (hls) { try { hls.destroy(); } catch (e) {} hls = null; }
+    try { video.pause(); } catch (e) {}
+    video.srcObject = null;
+    video.removeAttribute('src');
+    try { video.load(); } catch (e) {}
+    video.hidden = true;
+    ph.hidden = false;
+    root.classList.remove('is-playing');
+    btn.textContent = '播放';
+    btn.setAttribute('aria-pressed', 'false');
+    setState('');
+  }
+
+  function start() {
+    if (busy) return;
+    busy = true;
+    setState('正在连接…');
+
+    // 只有"真的试过并失败"才刷新冷却，否则冷却期会被无限续命，
+    // 管理员开通端口后用户的标签页反而一直卡在兼容模式。
+    var tried = !webrtcRecentlyFailed();
+    var first = tried
+      ? webrtc()
+      : Promise.reject(new Error('低延迟通道此前未打通（本次直接走兼容模式）'));
+
+    first
+      .then(function () {
+        clearWebrtcFailed();
+        showVideo();
+        clearStateIn(1500);
+      })
+      .catch(function (err) {
+        // 回落到 HLS。这里**不报错**——UDP 被挡是常态，能看就行。
+        if (tried) {
+          markWebrtcFailed();
+          setState('低延迟通道未打通（' + err.message + '），改用兼容模式…');
+        } else {
+          setState('使用兼容模式播放…');
+        }
+        return hlsPlay().then(function () {
+          showVideo();
+          clearStateIn(2500);
+        });
+      })
+      .catch(function (err) {
+        setState('播放失败：' + (err && err.message ? err.message : err), 'error');
+        stop();
+      })
+      .then(function () { busy = false; });
+  }
+
+  btn.addEventListener('click', function () {
+    if (pc || hls || (!video.hidden && video.getAttribute('src'))) stop();
+    else start();
+  });
+
+  /* 离开页面务必断开：否则上游会一直按"有观众"转封装/发流，白占出网带宽。 */
+  window.addEventListener('pagehide', stop);
+  document.addEventListener('visibilitychange', function () {
+    if (document.hidden && (pc || hls || video.getAttribute('src'))) stop();
+  });
+})();
+</script>

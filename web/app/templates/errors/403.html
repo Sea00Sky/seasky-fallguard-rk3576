@@ -1,0 +1,41 @@
+{# ==========================================================================
+   403 无权限页
+   规则：不跳回登录（会循环），显示当前角色/病区 + 返回工作台。
+   上下文：user（可选）、error_message（可选）
+   ========================================================================== #}
+{% from "_macros.html" import icon %}
+{% set role = user.role if user is defined and user else '' %}
+{#- 落地页口径与 deps.home_for() 一致：管理员回系统总览，不能回 /nurse/today（会再 403 一次） -#}
+{% set home = home_for(role) if role else '/login' %}
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>无权访问 · 衡护 HENGUARD</title>
+  <link rel="stylesheet" href="/static/tokens.css">
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  <main class="fg-errorpage">
+    <div class="fg-errorpage__card">
+      <div class="fg-errorpage__brand">{{ icon('logo', 24) }}衡护 HENGUARD</div>
+      <div class="fg-errorpage__code">403</div>
+      <h1 class="fg-errorpage__title">当前账号无权访问该页面</h1>
+      <p class="fg-errorpage__desc">
+        {{ error_message if error_message is defined and error_message else '该页面只对特定角色开放。如果你认为这是误判，请联系本病区护士长。' }}
+      </p>
+      {% if user is defined and user %}
+      <p class="fg-errorpage__meta">
+        当前账号：{{ user.display_name }} · {{ role_label(role) }}
+        {% if user.ward_id %} · 病区 {{ user.ward_id }}{% endif %}
+      </p>
+      {% endif %}
+      <div class="fg-errorpage__actions">
+        <a class="fg-btn fg-btn--primary" href="{{ home }}">返回工作台</a>
+        <a class="fg-btn fg-btn--secondary" href="/login">切换账号</a>
+      </div>
+    </div>
+  </main>
+</body>
+</html>

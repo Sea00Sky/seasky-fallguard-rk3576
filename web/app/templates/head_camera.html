@@ -1,0 +1,113 @@
+{# ==========================================================================
+   护士长 · 病区画面墙 /head/camera
+   --------------------------------------------------------------------------
+   左列点位竖排（可多选），右侧最多 3×3 宫格。2026-11-04 用户：
+   「病区总览首页可以把点位去掉，放到病区画面页，竖列排布，我可以点击在右侧查看，
+     也可以多选，在右侧形成最多九宫格就是 9 个」。
+
+   两个刻意的决定：
+   · 选择状态在前端（`?points=id1,id2` 同步进 URL）。服务端只交点位清单 ——
+     每点一次左列就跑一次路由会让正在播的画面全部重建。
+   · 宫格里**不画骨架**：板端帧元数据没有设备身份（见 app/live_meta.py），
+     多路同开会把 A 摄像头的骨架叠到 B 格子上。要骨架点每格的「单独查看 ↗」，
+     去 /head/camera/{id} 的单画面页（那里只有一个根，叠加层不会串）。
+
+   上下文：points[{point_id,name,light_key,stream_path,is_active,pending}]
+   脚本：camera-live.js（逐格初始化）+ camera-wall.js（选择 / 建格 / URL）
+   ========================================================================== #}
+{% extends "base.html" %}
+{% from "_macros.html" import icon, empty_state %}
+
+{% block title %}病区画面 · 衡护 HENGUARD{% endblock %}
+{% block page_key %}head-camera{% endblock %}
+{#- 2026-11-04 用户：「病区画面 / 选点位看画面… / 还有旁边的按钮都去掉」。
+    整条页头收掉：标题只留读屏（左导航已经标了当前位置），副标题和返回按钮删除 ——
+    返回总览走左导航即可。与 /alerts、/nurse/history、值班工作台同一套瘦页头。 -#}
+{% block page_title %}<span class="fg-sr-only">病区画面</span>{% endblock %}
+{% block page_head_class %} fg-page-head--slim{% endblock %}
+
+{% block content %}
+{% if points %}
+<div class="fg-camwall" data-camwall>
+  <aside class="fg-camwall__list" aria-label="点位">
+    <p class="fg-camwall__hint">点击加入右侧，最多 9 路</p>
+    {% for p in points %}
+    <button type="button" class="fg-campt"
+            data-point-id="{{ p.point_id }}"
+            data-point-name="{{ p.name }}"
+            data-point-stream="{{ p.stream_path }}"
+            data-point-active="{{ '1' if p.is_active else '0' }}"
+            aria-pressed="false">
+      {#- 灯色优先级与工作台一致：有人等 > 停用 > 未配置 > 正常 -#}
+      <span class="fg-campt__lamp {% if not p.is_active %}is-off{% elif p.pending %}is-alert{% elif not p.stream_path %}is-warn{% else %}is-ok{% endif %}"
+            aria-hidden="true"></span>
+      <span class="fg-campt__body">
+        <span class="fg-campt__name">{{ p.name }}</span>
+        <span class="fg-campt__meta">
+          {%- if not p.is_active -%}已停用
+          {%- elif p.pending -%}{{ p.pending }} 条待处置
+          {%- elif not p.stream_path -%}未配置摄像头
+          {%- else -%}已配置
+          {%- endif -%}
+        </span>
+      </span>
+      <span class="fg-campt__check" aria-hidden="true">{{ icon('check', 14) }}</span>
+    </button>
+    {% endfor %}
+  </aside>
+
+  <div class="fg-camwall__stage">
+    {#- 选中 >1 时提示带宽账：出网实测 4.78 Mbps，一路 720p 是 2.5 Mbps。
+        不提示的话「九宫格」会被理解成「九路一起播」。 -#}
+    <p class="fg-camwall__notice" data-camwall-notice hidden></p>
+    <div class="fg-camwall__grid" data-camwall-grid data-count="0"></div>
+    <p class="fg-camwall__empty" data-camwall-empty>
+      从左侧选择点位，右侧最多并排 9 路画面。
+    </p>
+  </div>
+</div>
+
+{#- 宫格单元模板：由 camera-wall.js 克隆。
+    ⚠️ 没有 canvas / 叠加开关栏 —— 多格不画骨架（原因见文件头）。
+    ⚠️ data-camera-autoplay="0"：每格手动播放，选中只是把格子摆出来。 -#}
+<template data-camcell-tpl>
+  <section class="fg-camcell" data-camera-root data-camera-autoplay="0">
+    <header class="fg-camcell__head">
+      <span class="fg-camcell__name"></span>
+      <span class="fg-camera__state" data-camera-state>正在检测…</span>
+      <a class="fg-camcell__solo" title="单独查看（带骨架叠加）">单独查看 ↗</a>
+    </header>
+    <div class="fg-camcell__stage" data-live-root>
+      <video class="fg-camcell__video" data-camera-video
+             playsinline muted controls preload="none" hidden></video>
+      <div class="fg-camera__ph" data-camera-ph>
+        <span class="fg-camera__badge" data-camera-badge>正在检测画面…</span>
+        <p class="fg-camera__hint" data-camera-hint></p>
+      </div>
+    </div>
+    <footer class="fg-camcell__foot">
+      <button type="button" class="fg-btn fg-btn--secondary fg-btn--sm"
+              data-camera-toggle aria-pressed="false">播放</button>
+    </footer>
+  </section>
+</template>
+{% else %}
+<section class="fg-panel fg-col-12">
+  <div class="fg-panel__head">
+    <h2 class="fg-panel__title">病区画面</h2>
+  </div>
+  <div class="fg-panel__body">
+    {{ empty_state('本病区尚未配置点位',
+                   '请先由信息科在「设备与点位」里登记点位。',
+                   '', '', 'device') }}
+  </div>
+</section>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{% if points %}
+<script src="{{ asset('camera-live.js') }}"></script>
+<script src="{{ asset('camera-wall.js') }}"></script>
+{% endif %}
+{% endblock %}

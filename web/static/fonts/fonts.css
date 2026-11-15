@@ -1,0 +1,31 @@
+/* ==========================================================================
+   衡护 HENGUARD · 数字等宽字体（自托管，零 CDN）
+   来源：IBM Plex Mono（SIL OFL 1.1），裁成拉丁 + 数字 + 少量符号，约 4.8 KB/字重。
+   为什么只裁拉丁：中文字形仍走系统的思源黑体/苹方/微软雅黑，浏览器按字形回落，
+   CM 里出现汉字也不会变豆腐块。
+   加载顺序：fonts.css → tokens.css → app.css → theme-dark.css
+   ========================================================================== */
+
+@font-face {
+  font-family: "IBM Plex Mono";
+  src: url("plexmono-Regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "IBM Plex Mono";
+  src: url("plexmono-Medium.woff2") format("woff2");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "IBM Plex Mono";
+  src: url("plexmono-SemiBold.woff2") format("woff2");
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}

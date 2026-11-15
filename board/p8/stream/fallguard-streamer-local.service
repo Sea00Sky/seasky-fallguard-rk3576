@@ -1,0 +1,38 @@
+[Unit]
+# 板端本地 RTSP 推流：video42 mainpath 1080p → rtsp://:8554/live
+#
+# 这是云出口的上游：`fallguard-streamer-cloud` 从
+# rtsp://127.0.0.1:8554/live 拉流。本 unit 不起，云出口会一直退避重连
+# （进程不崩，但也没画面）—— 所以两个 unit 的启停顺序不是靠 `Requires=` 保证的，
+# 而是靠 CloudSender 自己退避重连。
+#
+# 检测吃 selfpath（video43），本 unit 吃 mainpath（video42）。
+# 两个节点可被两个进程同时打开，「V4L2 独占」只对同一个节点成立。
+Description=FallGuard local RTSP streamer (mainpath -> rtsp://:8554/live)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# 必须指定 User：依赖（numpy 等）装在 /opt/fallguard/.local，
+# 以 root 跑会 ModuleNotFoundError 。
+User=fallguard
+Group=fallguard
+WorkingDirectory=/opt/fallguard/board
+
+# 端口/挂载点/分辨率/凭据都在这里。云出口 unit 读同一份，
+# 否则两边各用各的默认值，改了口令就只改一半 ⇒ 云出口 401。
+EnvironmentFile=-/etc/fallguard/stream.env
+
+ExecStart=/usr/bin/python3 /opt/fallguard/board/scripts/run_stream.py
+
+# `Restart=on-failure` 不是 `always`：正常 `systemctl stop` 退出 0 不该被拉起。
+# 摄像头没插时会反复失败 —— 这是真实故障，不是「正在启动」。
+# 判据必须看 `systemctl show -p NRestarts -p SubState`：
+# `activating` + `auto-restart` = 崩溃循环（见 [[rk3576-board-env]]）。
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=10
+
+[Install]
+WantedBy=multi-user.target

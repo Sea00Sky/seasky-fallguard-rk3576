@@ -1,0 +1,405 @@
+{# ==========================================================================
+   人员与账号 /head/staff
+   结构：一张账号表（2026-11-04 由「人员只读 / 账号可写」两个 Tab 合并）
+         + 一次性密码弹窗（重置密码用）+ 分配区域弹窗
+   ⚠️ 新建账号弹窗 2026-11-04 删除：建号权限收回，只剩信息科的 /admin/accounts。
+   上下文：accounts[]、zones[]、temp_password、new_user、notice、error、user、ward
+   ========================================================================== #}
+{% extends "base.html" %}
+{% from "_macros.html" import icon, fmt_time, empty_state, no_zone_text, no_zone_short %}
+
+{% block title %}人员与账号 · 衡护 HENGUARD{% endblock %}
+{% block page_key %}head-staff{% endblock %}
+{#- 2026-11-04 用户：「大标题也可以去掉，且人员和账号没要做两个功能对吧，合成一个」。
+    标题收进 sr-only（左导航已经标了当前位置）；人员 / 账号 两个 Tab 合成一张表 ——
+    两边的行本来就是同一批（路由把 rows 同时喂给 people 和 accounts），
+    差别只有「人员只读、账号可写」，合成后写操作按行给，没必要让用户先选 Tab。 -#}
+{% block page_title %}<span class="fg-sr-only">人员与账号</span>{% endblock %}
+{% block page_head_class %} fg-page-head--slim{% endblock %}
+
+{% set account_list = accounts if accounts is defined and accounts else [] %}
+
+{#- 2026-11-04 用户：「护士长不能创建护士账号，把这个权限收回」。
+    建号入口从这里整块拿掉，只留在信息科的 /admin/accounts；
+    接口侧同样收窄（routes/admin.py create_user 现在非 admin 直接 403）。
+    护士长在本页保留：重置密码 / 禁用启用 / 分配区域。 -#}
+
+{% block content %}
+<div class="fg-col-12">
+  {% if notice %}
+  <div class="fg-banner fg-banner--info fg-mb-4" role="status">{{ notice }}</div>
+  {% endif %}
+  {% if error %}
+  <div class="fg-banner fg-banner--danger fg-mb-4" role="alert">{{ error }}</div>
+  {% endif %}
+
+  {# ---------- 工作量带（2026-11-04）----------
+     四项都能被护士长**今天**用上：谁在值、今天接了多少警、谁手上还压着事、
+     谁的账号没人管（未配区域 = P12 的默认拒绝，登录后什么都看不到）。
+     只有「手上未闭环」带链接：台账按处置态能筛出精确的同一批事件；
+     其余三项要么是账号属性、要么没有对应的台账筛选，做成链接就是骗人点。 -#}
+  <div class="fg-whiteboard fg-whiteboard--4 fg-mb-4">
+    <div class="fg-wb">
+      <span class="fg-wb__k">在值护士</span>
+      <span class="fg-wb__v">{{ summary.active }}</span>
+      <span class="fg-wb__s">共 {{ summary.total }} 个账号</span>
+    </div>
+    <div class="fg-wb">
+      <span class="fg-wb__k">今日接警</span>
+      <span class="fg-wb__v">{{ summary.acked_today }}</span>
+      <span class="fg-wb__s">今日闭环 {{ summary.closed_today }} 条</span>
+    </div>
+    <a class="fg-wb" href="/head/events?disposition=ACKED,ON_SCENE&test=0"
+       title="打开台账，只看已接警 / 已到场的事件">
+      <span class="fg-wb__k">手上未闭环</span>
+      <span class="fg-wb__v {% if summary.open_now %}is-alert{% endif %}">{{ summary.open_now }}</span>
+      <span class="fg-wb__s">全病区合计</span>
+    </a>
+    <div class="fg-wb {% if not summary.no_zone %}is-muted{% endif %}">
+      <span class="fg-wb__k">未配区域</span>
+      <span class="fg-wb__v {% if summary.no_zone %}is-alert{% endif %}">{{ summary.no_zone }}</span>
+      <span class="fg-wb__s">
+        {%- if summary.no_zone -%}这些护士{{ no_zone_short() }}{%- else -%}都已分配{%- endif -%}
+      </span>
+    </div>
+  </div>
+
+  {# ---------- 账号表（可写）----------
+     2026-11-04：去掉「角色」（这一页只列 nurse，整列都是同一个值）和
+     「最后登录」（挪进档案抽屉）。换上来的是两列真工作量。
+     行点击打开右侧档案 —— 要按钮的动作（分配区域/重置/禁用）仍然留在行内，
+     app.js 的 [data-detail-url] 会跳过 a/button/input/select/textarea/label，
+     点按钮不会误开抽屉。 -#}
+  <div class="fg-table-wrap">
+    <table class="fg-table">
+      <thead>
+        <tr>
+          <th scope="col">姓名</th>
+          <th scope="col">登录名</th>
+          <th scope="col">今日接警</th>
+          <th scope="col">手上未闭环</th>
+          <th scope="col">负责区域</th>
+          <th scope="col">状态</th>
+          <th scope="col">操作</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for account in account_list %}
+        <tr data-detail-url="/head/staff?u={{ account.user_id }}" tabindex="0">
+          <td class="fg-nowrap">
+            {{ account.display_name or '—' }}
+            {% if user is defined and user and account.user_id == user.user_id %}
+            <span class="fg-tag fg-tag--test">本人</span>
+            {% endif %}
+          </td>
+          <td class="fg-mono fg-nowrap">{{ account.login_name or '—' }}</td>
+          <td class="fg-mono fg-nowrap">
+            {% if account.acked_today %}{{ account.acked_today }}{% else %}<span class="fg-muted">0</span>{% endif %}
+          </td>
+          <td class="fg-mono fg-nowrap">
+            {% if account.open_now %}
+            <span class="fg-strong">{{ account.open_now }}</span>
+            {% else %}<span class="fg-muted">—</span>{% endif %}
+          </td>
+          {#- P12：负责区域。护士按区域限定数据范围，未分配 = 默认拒绝（登录后什么都看不到）。
+              这一页只列 nurse，所以 role 判断可以省；「—」的旧分支留给将来放开角色时兜底。 -#}
+          <td>
+            {% if account.zone_names %}
+            <span class="fg-nowrap">{{ account.zone_names | join('、') }}</span>
+            {% else %}
+            <span class="fg-tag fg-tag--pending"><span class="fg-tag__mark"></span>未分配</span>
+            {% endif %}
+          </td>
+          <td class="fg-nowrap">
+            {% if account.is_active is defined and not account.is_active %}
+            <span class="fg-tag fg-tag--closed"><span class="fg-tag__mark"></span>已禁用</span>
+            {% else %}
+            <span class="fg-tag fg-tag--resolved"><span class="fg-tag__mark"></span>启用</span>
+            {% endif %}
+            {#- 账号异常只标「需要护士长做点什么」的状态。三种同时成立时只出最要紧的一种：
+                已锁定（现在登录不了）> 从未登录（新号没人认领）> 待改密（能登录但还欠一步）。 -#}
+            {% if account.locked %}
+            <span class="fg-tag fg-tag--pending"
+                  title="密码连续输错被临时锁定，锁定到 {{ fmt_time(account.locked_until, '%m-%d %H:%M') }}">
+              <span class="fg-tag__mark"></span>已锁定</span>
+            {% elif account.is_active and not account.last_login_at %}
+            <span class="fg-tag fg-tag--test" title="账号建好了但一次都没登录过">
+              <span class="fg-tag__mark"></span>从未登录</span>
+            {% elif account.is_active and account.must_change_password %}
+            <span class="fg-tag fg-tag--test" title="首登后必须改密，这一步还没完成">
+              <span class="fg-tag__mark"></span>待改密</span>
+            {% endif %}
+          </td>
+          <td class="fg-nowrap">
+            <div class="fg-table__actions">
+              {#- ⚠️ 2026-11-04 修：这三个按钮只有 data-api-url，没有 data-api-action，
+                  而 app.js 的点击委托认的是 `[data-api-action]` —— 也就是说
+                  重置密码 / 禁用 / 启用 一直点不动（没有任何 handler 接）。
+                  admin_accounts.html 里一直是对的，这页漏了。别删这个裸属性。 -#}
+              <button type="button" class="fg-btn fg-btn--ghost fg-btn--sm"
+                      data-zone-open="{{ account.user_id }}"
+                      data-zone-user="{{ account.display_name or account.login_name }}"
+                      data-zone-ids="{{ account.zone_ids | join(',') }}">分配区域</button>
+              <button type="button" class="fg-btn fg-btn--ghost fg-btn--sm"
+                      data-api-action
+                      data-api-url="/api/v1/admin/users/{{ account.user_id }}/reset-password"
+                      data-api-method="POST"
+                      data-confirm="重置后旧密码立即失效，确认重置 {{ account.display_name }} 的密码？">
+                重置密码
+              </button>
+              {% if not (user is defined and user and account.user_id == user.user_id) %}
+                {% if account.is_active is defined and not account.is_active %}
+                <button type="button" class="fg-btn fg-btn--ghost fg-btn--sm"
+                        data-api-action
+                        data-api-url="/api/v1/admin/users/{{ account.user_id }}"
+                        data-api-method="PATCH"
+                        data-api-body='{"is_active": true}'>启用</button>
+                {% else %}
+                <button type="button" class="fg-btn fg-btn--ghost fg-btn--sm"
+                        data-api-action
+                        data-api-url="/api/v1/admin/users/{{ account.user_id }}"
+                        data-api-method="PATCH"
+                        data-api-body='{"is_active": false}'
+                        data-confirm="禁用后该账号将无法登录，确认禁用 {{ account.display_name }}？">禁用</button>
+                {% endif %}
+              {% endif %}
+            </div>
+          </td>
+        </tr>
+        {% else %}
+        <tr class="fg-table__empty">
+          <td colspan="7">{{ empty_state('尚无账号', '请联系信息科管理员创建账号。', '', '', 'users') }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="fg-note fg-mt-3">
+    {{ icon('lock', 18) }}
+    {#- 原来还有一句「护士长不能修改自己的角色」：护士长已从列表里去掉，
+        这句在界面上指不到任何一行，删。 -#}
+    <span>账号不能删除；停用后历史处置记录仍保留。点任意一行查看该护士的档案。</span>
+  </div>
+</div>
+
+{# ---------- 人员档案抽屉 ----------
+   复用 app.js 的 loadDetail()：抓 `/head/staff?u=<id>`（自动加 drawer=1），
+   把整个 .fg-drawer__body 换掉。所以这一页必须**永远**渲染这个根，
+   没有选中的人就 hidden —— 否则详情页第一行 fetch 拿不到 .fg-drawer__body，
+   会退回 window.location.assign()，点一行变成整页跳转。 #}
+<div class="fg-drawer-root" id="fg-drawer-root" {% if not card_user %}hidden{% endif %}>
+  <div class="fg-drawer-overlay" data-drawer-close></div>
+  <aside class="fg-drawer" role="dialog" aria-modal="true" aria-label="人员档案" tabindex="-1">
+    <div class="fg-drawer__body">
+      {% if card_user %}{% include "_staff_card.html" %}{% endif %}
+    </div>
+  </aside>
+</div>
+
+{# ---------- 一次性密码弹窗 ---------- #}
+<div class="fg-modal-root" id="fg-onetime-modal" {% if not temp_password %}hidden{% endif %}>
+  <div class="fg-modal-overlay" data-modal-close></div>
+  <div class="fg-modal" role="dialog" aria-modal="true" aria-labelledby="fg-onetime-title">
+    <div class="fg-modal__head">
+      <h2 class="fg-modal__title" id="fg-onetime-title">一次性密码</h2>
+      <button type="button" class="fg-drawer__close" data-modal-close aria-label="关闭">{{ icon('x', 20) }}</button>
+    </div>
+    <div class="fg-modal__body">
+      <div class="fg-onetime">
+        <p class="fg-modal__text">
+          <strong>此密码只显示一次，请立即抄写。</strong>
+          首次登录后系统会强制修改密码。
+        </p>
+        <div class="fg-onetime__code">
+          <code id="onetime-code" data-onetime-code>{{ temp_password if temp_password is defined and temp_password else '—' }}</code>
+          <button type="button" class="fg-btn fg-btn--secondary fg-btn--sm" data-copy="#onetime-code">复制</button>
+        </div>
+        <p class="fg-small fg-muted">
+          账号：<span data-onetime-user>{{ new_user.display_name if new_user is defined and new_user else '' }}</span>
+        </p>
+      </div>
+    </div>
+    <div class="fg-modal__foot">
+      <button type="button" class="fg-btn fg-btn--primary" data-modal-close>我已抄写</button>
+    </div>
+  </div>
+</div>
+
+{# ---------- 分配负责区域弹窗（P12） ----------
+   一个弹窗服务所有行：行上的按钮通过 data-zone-open / data-zone-ids 把
+   「是谁、现在勾了哪几个」带进来，下面的脚本填标题和勾选状态。
+   每个护士一个弹窗会把同一份区域列表复制 N 份，改一次要改 N 处。
+
+   2026-11-05（第90轮）重做，四件事：
+   ① 控件从裸 checkbox（.fg-check）换成房内既有的 .fg-choice 整行可点
+      —— 原来全应用只有这一处长得跟别处不一样，点击热区还只有文字那一条。
+   ② 顶部给「已选 N / M」+ 全选 / 清空：勾了几个不用自己数。
+   ③ 「一个都不勾 = 默认拒绝」原是一段**常驻**长文，不管勾没勾都一字不变，
+      读起来像样板字所以没人看。改成只在真的一勾都没有时才跳出来的红条，
+      并把保存做成**点第二次**才放行（替掉原来的浏览器原生 window.confirm）。
+   ④ 已停用的区域：护士本来没有的 ⇒ 置灰、不给新开权限；
+      本来分过的 ⇒ 仍留着可点，让他能取消勾选
+      —— 否则一保存就把人家原有权限悄悄抹掉了。 #}
+<div class="fg-modal-root" id="fg-zone-modal" hidden>
+  <div class="fg-modal-overlay" data-modal-close></div>
+  <div class="fg-modal" role="dialog" aria-modal="true" aria-labelledby="fg-zone-title">
+    <div class="fg-modal__head">
+      <h2 class="fg-modal__title" id="fg-zone-title">分配负责区域</h2>
+      <button type="button" class="fg-drawer__close" data-modal-close aria-label="关闭">{{ icon('x', 20) }}</button>
+    </div>
+    <form data-api-form id="fg-zone-form" data-api-method="PUT" data-reload="1"
+          data-api-endpoint="/api/v1/admin/users/0/zones">
+      <div class="fg-modal__body">
+        <div class="fg-zone-head">
+          <p class="fg-modal__text">
+            <strong data-zone-user>—</strong>
+            <span class="fg-muted">已选</span>
+            <span class="fg-zone-count"><b data-zone-count>0</b> / <span data-zone-total>{{ zones | length }}</span></span>
+          </p>
+          {% if zones %}
+          <div class="fg-zone-bulk">
+            <button type="button" class="fg-btn fg-btn--ghost fg-btn--sm" data-zone-all>全选</button>
+            <button type="button" class="fg-btn fg-btn--ghost fg-btn--sm" data-zone-none>清空</button>
+          </div>
+          {% endif %}
+        </div>
+        {% if zones %}
+        <ul class="fg-checklist" role="group" aria-label="可分配区域">
+          {% for z in zones %}
+          <li>
+            <label class="fg-choice fg-choice--block">
+              <input type="checkbox" name="zone_ids" value="{{ z.zone_id }}" data-multi="array"
+                     {% if not z.is_active %}data-zone-inactive{% endif %}>
+              <span class="fg-choice__box"></span>
+              <span class="fg-choice__label">{{ z.name }}</span>
+              {% if not z.is_active %}<span class="fg-tag fg-tag--closed"><span class="fg-tag__mark"></span>已停用</span>{% endif %}
+            </label>
+          </li>
+          {% endfor %}
+        </ul>
+        {% else %}
+        <p class="fg-hint">本病区还没有区域。区域由信息科管理员在「设备与点位」里创建。</p>
+        {% endif %}
+
+        {#- aria-live 只挂在这条**后果性**提示上，不挂计数：
+            计数每勾一下都变，读屏会一路念；而复选框自己本来就会播报勾选态。
+            这里用 polite 不用 role="alert"（assertive 会打断用户当前在读的东西）。 -#}
+        <div class="fg-note fg-note--danger fg-mt-3" data-zone-empty aria-live="polite" hidden>
+          {{ icon('alert', 18) }}
+          <span>一个区域都不勾 = <strong>{{ no_zone_text() }}</strong>。
+            保存即撤掉全部分配。</span>
+        </div>
+        <p class="fg-hint fg-mt-3">只勾该护士值班时真正负责的区域，保存后立即生效。</p>
+        <div class="fg-error-text fg-mt-3" data-form-error hidden></div>
+      </div>
+      <div class="fg-modal__foot">
+        <button type="button" class="fg-btn fg-btn--secondary" data-modal-close>取消</button>
+        <button type="submit" class="fg-btn fg-btn--primary" data-zone-save>保存</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+(function () {
+  var modal = document.getElementById('fg-zone-modal');
+  if (!modal) return;
+  var form = document.getElementById('fg-zone-form');
+  var who = modal.querySelector('[data-zone-user]');
+  var countEl = modal.querySelector('[data-zone-count]');
+  var totalEl = modal.querySelector('[data-zone-total]');
+  var note = modal.querySelector('[data-zone-empty]');
+  var saveBtn = modal.querySelector('[data-zone-save]');
+
+  function boxes() {
+    return Array.prototype.slice.call(form.querySelectorAll('input[name="zone_ids"]'));
+  }
+  function checked() {
+    return boxes().filter(function (el) { return el.checked; });
+  }
+  /* 「可分配的」= 没被停用挡住的。分母用它，全选才可能选满 M/M；
+     拿病区总数当分母的话，停用区域会让全选永远差一个，看着像坏了。 */
+  function live() {
+    return boxes().filter(function (el) { return !el.disabled; });
+  }
+
+  /* ⚠️ 停用区域的规矩：本来分过的必须**留着可点**，否则读屏/键盘用户
+     连原有的都取消不掉；而一保存就顺手抹掉人家原有权限更难查。 */
+  function applyInactive(ids) {
+    boxes().forEach(function (el) {
+      if (!el.hasAttribute('data-zone-inactive')) return;
+      el.disabled = ids.indexOf(el.value) < 0;
+      var label = el.closest('.fg-choice');
+      if (label) label.title = el.disabled ? '区域已停用，不能新分配' : '区域已停用，取消后不能再勾回来';
+    });
+  }
+
+  /* 保存按钮上的「二次确认」武装态。任何勾选变动都要解除，
+     否则用户改完勾选再点保存会被莫名拦下第一次。 */
+  var armed = false;
+  function disarm() {
+    armed = false;
+    saveBtn.classList.remove('fg-btn--danger');
+    saveBtn.classList.add('fg-btn--primary');
+    saveBtn.textContent = '保存';
+  }
+
+  function refresh() {
+    var n = checked().length;
+    if (countEl) countEl.textContent = String(n);
+    if (note) note.hidden = n > 0;
+    disarm();
+  }
+
+  document.addEventListener('click', function (event) {
+    var btn = event.target.closest('[data-zone-open]');
+    if (!btn) return;
+    event.preventDefault();
+    var ids = (btn.getAttribute('data-zone-ids') || '').split(',').filter(Boolean);
+    who.textContent = btn.getAttribute('data-zone-user') || '该护士';
+    form.setAttribute('data-api-endpoint',
+                      '/api/v1/admin/users/' + btn.getAttribute('data-zone-open') + '/zones');
+    boxes().forEach(function (el) { el.checked = ids.indexOf(el.value) >= 0; });
+    applyInactive(ids);
+    if (totalEl) totalEl.textContent = String(live().length);
+    var err = form.querySelector('[data-form-error]');
+    if (err) { err.hidden = true; err.textContent = ''; }
+    refresh();
+    if (window.FG && window.FG.openModal) window.FG.openModal('#fg-zone-modal');
+  });
+
+  form.addEventListener('change', function (event) {
+    if (event.target && event.target.name === 'zone_ids') refresh();
+  });
+
+  form.addEventListener('click', function (event) {
+    if (event.target.closest('[data-zone-all]')) {
+      live().forEach(function (el) { el.checked = true; });
+      refresh();
+    } else if (event.target.closest('[data-zone-none]')) {
+      boxes().forEach(function (el) { el.checked = false; });
+      refresh();
+    }
+  });
+
+  /* 一个都不勾 = 撤掉全部区域 = 该护士立刻什么都看不到。
+     这个后果比「误点保存」重得多，所以拦一道再放行 —— 但用的是房内自研的
+     二次确认（按钮变色 + 改字，再点一次才真提交），不弹浏览器的原生确认框：
+     全站都是自研弹窗，只有这一处冒个系统对话框太突兀。
+     ⚠️ 下面这段注释里刻意不写原生确认框的 API 名 —— 校验脚本是拿它当
+        「有没有回退到原生」的判据的，注释里出现一次就会假红。
+     ⚠️ 必须在**捕获阶段**拦：app.js 的提交处理挂在 document 的冒泡阶段，
+        只有 stopPropagation() 才能让它收不到这次 submit。 */
+  form.addEventListener('submit', function (event) {
+    if (checked().length > 0 || armed) return;
+    event.preventDefault();
+    event.stopPropagation();
+    armed = true;
+    saveBtn.classList.remove('fg-btn--primary');
+    saveBtn.classList.add('fg-btn--danger');
+    saveBtn.textContent = '再点一次确认撤掉';
+    if (note) note.hidden = false;
+  }, true);
+})();
+</script>
+{% endblock %}

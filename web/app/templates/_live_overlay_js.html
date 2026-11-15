@@ -1,0 +1,346 @@
+{# ==========================================================================
+   实时画面 · 骨架叠加（P9 ADR-11 / P4b）
+   必须放在 {% block scripts %} 内。它只认 DOM 约定，不认是谁在播：
+     页面要有 [data-live-root]（含 video/canvas）和 [data-live-overlay-bar]；
+     播放器要把 RTCPeerConnection 挂在它自己的 [data-camera-root] 上
+     （``__fgLivePc`` / ``__fgLiveMode``），本文件用 closest 找上去取。
+   现役两处：/nurse/camera/{point_id} 与 /head/camera —— 两者共用同一份
+   camera-live.js（护士长入口 2026-11-04 起）。旧的 _live_panel_js.html
+   （总览内嵌单路播放器）同日随「画面搬出首页」失去消费者，保留仅作对照。
+
+   数据流：板端 10 Hz 把每帧的 bbox + 17 关键点 POST 到云端 → 本页 SSE 收
+   → 在 <video> 上叠一层 <canvas> 画出来。**板端零渲染开销**。
+
+   对齐：见 app/live_meta.py 顶部。三方时钟统一换算到「云端时间轴」，
+   当前画面时刻 = 云端now − 视频延迟 L，再在环形缓冲里找最近一帧。
+
+   样式：必须与板端 8888 画布一致（老师样式：绿线红点、随人缩放），
+   否则同一个系统两种画风。规格抄自 src/multi/overlay.py。
+   ========================================================================== #}
+<script>
+(function () {
+  var root = document.querySelector('[data-live-root]');
+  var video = document.querySelector('[data-live-video]');
+  if (!root || !video) return;
+
+  // 2026-11-05 五改：把「这一页正在看的那条流」带给服务端，骨架就按流分发。
+  // 流名挂在播放器根节点上（`data-camera-stream`，见 camera-live.js），不是
+  // `[data-live-root]`。取不到（老页面/未配置摄像头）⇒ 不带参数 ⇒ 服务端退回
+  // 原来的病区+区域口径，行为与改动前逐字相同。
+  var camRoot = video.closest('[data-camera-root]')
+             || document.querySelector('[data-camera-root]');
+  var STREAM = ((camRoot && camRoot.getAttribute('data-camera-stream')) || '').trim();
+
+  var canvas = root.querySelector('[data-live-canvas]');
+  // ⚠️ 开关栏是 `.fg-live` 的**兄弟节点**（在面板 body 里、视频卡下面），
+  //    不能用 root.querySelector 找 —— 那样返回 null，开关栏永远不出现。
+  var toolbar = document.querySelector('[data-live-overlay-bar]');
+  // 实时角标：呼吸点 + 画面时刻（画面上那一帧的云端时刻，不是墙上时间）
+  var liveBadge = root.querySelector('[data-live-live]');
+  var tkEl = root.querySelector('[data-live-timecode]');
+  if (!canvas) return;
+
+  /* ── 与 src/multi/overlay.py 逐字一致 ───────────────────────────── */
+  var SKELETON_EDGES = [
+    [0, 1], [0, 2],          // 鼻子 → 左眼/右眼
+    [1, 3], [2, 4],          // 眼 → 耳
+    [5, 6],                  // 锁骨
+    [5, 11], [6, 12],        // 肩 → 髋
+    [11, 12],                // 骨盆
+    [5, 7], [7, 9],          // 左臂
+    [6, 8], [8, 10],         // 右臂
+    [11, 13], [13, 15],      // 左腿
+    [12, 14], [14, 16]       // 右腿
+  ];
+  var KP_CONF = 0.3;
+  var C_LIMB = '#00ff00';    // 绿 —— 骨骼连线
+  var C_KP = '#ff0000';      // 红 —— 关键点
+  var C_BOX = 'rgba(160,160,160,0.9)';
+  var C_TEXT = '#ffffff';
+  var C_TEXT_BG = 'rgba(0,0,0,0.65)';
+  var PROB_ALERT = 0.5;      // 与 src/spec.py 的 THRESHOLD 一致
+
+  var ctx = canvas.getContext('2d');
+  var buf = [];              // [{t(ms,云端时间轴), w, h, persons}]
+  var BUFFER_MS = 4000;      // 保留 4 秒（10 Hz ⇒ 40 帧）
+  var bias = 0;              // 云端时间 − 浏览器时间（毫秒）
+  var haveBias = false;
+  var es = null;
+  var rafId = 0;
+  var latencyMs = 400;       // 视频延迟估值，WebRTC 下由 getStats 更新
+  var manualLatency = 0;     // 手动微调（毫秒），±0.1 s 那档
+  var lastStatsAt = 0;
+  var showSkel = true, showBox = true, showLabel = true;
+  var lastFrameT = 0;
+
+  /* ── 尺寸：canvas 必须精确贴住**视频内容区** ──────────────────────
+     `.fg-live__video` 是 `object-fit: contain`，容器里会有黑边。
+     贴容器的话骨架会整体偏移（黑边越宽偏得越多）。
+     这里按 contain 的规则自己算内容矩形，再把 canvas 定位上去。 */
+  function resize() {
+    var rect = video.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    var vw = video.videoWidth || 0;
+    var vh = video.videoHeight || 0;
+    var left = 0, top = 0, w = rect.width, h = rect.height;
+    if (vw && vh) {
+      var scale = Math.min(rect.width / vw, rect.height / vh);
+      w = vw * scale;
+      h = vh * scale;
+      left = (rect.width - w) / 2;
+      top = (rect.height - h) / 2;
+    }
+    var dpr = window.devicePixelRatio || 1;
+    var pw = Math.round(w * dpr), ph = Math.round(h * dpr);
+    if (canvas.width !== pw || canvas.height !== ph) {
+      canvas.width = pw;
+      canvas.height = ph;
+    }
+    canvas.style.left = left + 'px';
+    canvas.style.top = top + 'px';
+    canvas.style.width = w + 'px';
+    canvas.style.height = h + 'px';
+  }
+  window.addEventListener('resize', resize);
+  video.addEventListener('loadedmetadata', resize);
+
+  /* ── SSE：帧元数据 ─────────────────────────────────────────────── */
+  function connect() {
+    if (es || !('EventSource' in window)) return;
+    es = new EventSource(
+      '/api/v1/live/meta' + (STREAM ? '?stream=' + encodeURIComponent(STREAM) : ''),
+      { withCredentials: true });
+    es.addEventListener('hello', function (ev) {
+      try {
+        var d = JSON.parse(ev.data);
+        // 云端时间轴 − 浏览器时间轴。之后一律用 Date.now()+bias 表示"云端此刻"
+        bias = d.server_ts - Date.now();
+        haveBias = true;
+      } catch (e) {}
+    });
+    es.addEventListener('meta', function (ev) {
+      if (!haveBias) return;
+      try {
+        var d = JSON.parse(ev.data);
+      } catch (e) { return; }
+      buf.push(d);
+      // 丢掉过期的
+      var cutoff = d.t - BUFFER_MS;
+      while (buf.length && buf[0].t < cutoff) buf.shift();
+      if (buf.length > 200) buf.splice(0, buf.length - 200);
+    });
+    es.onerror = function () {
+      // EventSource 自己会重连；这里只清缓冲，避免重连后用旧数据画出鬼影
+      buf.length = 0;
+      haveBias = false;
+    };
+  }
+
+  function disconnect() {
+    if (es) { try { es.close(); } catch (e) {} es = null; }
+    buf.length = 0;
+    haveBias = false;
+  }
+
+  /* ── 延迟估计 ─────────────────────────────────────────────────── */
+  function estimateLatency() {
+    /* 2026-11-04：播放器可能一页多实例（病区画面墙），连接挂在各自的
+       [data-camera-root] 上，别再读 window 全局。
+       ⚠️ 本文件的 root 是 [data-live-root]（视频所在的那层 stage），
+          播放器的 root 是外层 [data-camera-root] —— 不是同一个节点，
+          必须 closest 上去找，否则读到的永远是 undefined，
+          骨架会退回按 HLS 的 2 秒估值对齐（WebRTC 下错位但看不出来）。 */
+    var camRoot = (root.closest && root.closest('[data-camera-root]')) || root;
+    var pc = camRoot.__fgLivePc;
+    var mode = camRoot.__fgLiveMode;
+    if (mode === 'hls' || !pc) {
+      // HLS 的延迟是分片级的（2–3 s），估不准，交给手动滑块
+      latencyMs = 2000 + manualLatency;
+      return;
+    }
+    var now = Date.now();
+    if (now - lastStatsAt < 1000) return;   // getStats 一秒一次就够
+    lastStatsAt = now;
+    pc.getStats(null).then(function (report) {
+      report.forEach(function (s) {
+        if (s.type !== 'inbound-rtp' || s.kind !== 'video') return;
+        var jb = 0;
+        if (s.jitterBufferEmittedCount > 0) {
+          jb = (s.jitterBufferDelay / s.jitterBufferEmittedCount) * 1000;
+        }
+        var rtt = (s.roundTripTime || 0) * 1000;
+        latencyMs = jb + rtt + manualLatency;
+      });
+    }).catch(function () {});
+  }
+
+  /* ── 取帧：云端时间轴上最接近「当前画面」的一帧 ─────────────────── */
+  function pickFrame() {
+    if (!haveBias || !buf.length) return null;
+    var tVideo = Date.now() + bias - latencyMs;   // 此刻屏幕上那一帧的云端时刻
+    // buf 按时间升序，二分找最后一个 t <= tVideo
+    var lo = 0, hi = buf.length - 1, best = -1;
+    while (lo <= hi) {
+      var mid = (lo + hi) >> 1;
+      if (buf[mid].t <= tVideo) { best = mid; lo = mid + 1; }
+      else { hi = mid - 1; }
+    }
+    if (best < 0) return buf[0];
+    // 太旧（>1.5 s）说明元数据流断了，宁可不画也不画错的
+    if (tVideo - buf[best].t > 1500) return null;
+    return buf[best];
+  }
+
+  /* ── 绘制（单帧，由 tick 调用） ───────────────────────────────── */
+  var resizeTick = 0;
+  var lastTkSec = -1;
+  function pad2(n) { return n < 10 ? '0' + n : '' + n; }
+
+  /* 角标显示的必须和画面上那一帧对得上，否则「14:32:08」是假的。
+     用同一条式：云端此刻 − 视频延迟。 */
+  function updateTimecode() {
+    if (!tkEl || !haveBias) return;
+    var sec = Math.floor((Date.now() + bias - latencyMs) / 1000);
+    if (sec === lastTkSec) return;          // 一秒一次就够，别每帧写 DOM
+    lastTkSec = sec;
+    var d = new Date(sec * 1000);
+    tkEl.textContent = pad2(d.getHours()) + ':' + pad2(d.getMinutes()) + ':' + pad2(d.getSeconds());
+  }
+
+  function drawOnce() {
+    // getBoundingClientRect 会强制重排，不必每帧都量：15 帧一次（约 0.25 s）足够
+    if ((resizeTick++ % 15) === 0) resize();
+    updateTimecode();
+    var W = canvas.width, H = canvas.height;
+    if (!W || !H) return;
+    ctx.clearRect(0, 0, W, H);
+
+    var frame = pickFrame();
+    if (!frame || !frame.persons || !frame.persons.length) return;
+    lastFrameT = frame.t;
+
+    var sx = W / (frame.w || 640);
+    var sy = H / (frame.h || 480);
+
+    for (var i = 0; i < frame.persons.length; i++) {
+      drawPerson(frame.persons[i], sx, sy, W);
+    }
+  }
+
+  function drawPerson(p, sx, sy, W) {
+    var bbox = p.bbox || [0, 0, 0, 0];
+    var x1 = bbox[0] * sx, y1 = bbox[1] * sy;
+    var x2 = bbox[2] * sx, y2 = bbox[3] * sy;
+    var diag = Math.max(1, Math.hypot(x2 - x1, y2 - y1));
+    var radius = Math.max(2, Math.round(diag / 60));     // 随人缩放
+    var thickness = Math.max(1, Math.round(radius / 2));
+
+    if (showBox) {
+      ctx.strokeStyle = C_BOX;
+      ctx.lineWidth = Math.max(1, radius / 3);
+      ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
+    }
+
+    var kp = p.kp || [];
+    var n = Math.floor(kp.length / 3);
+
+    if (showSkel) {
+      ctx.strokeStyle = C_LIMB;
+      ctx.lineWidth = thickness;
+      ctx.lineCap = 'round';
+      for (var e = 0; e < SKELETON_EDGES.length; e++) {
+        var a = SKELETON_EDGES[e][0], b = SKELETON_EDGES[e][1];
+        if (a >= n || b >= n) continue;
+        if (kp[a * 3 + 2] <= KP_CONF || kp[b * 3 + 2] <= KP_CONF) continue;
+        ctx.beginPath();
+        ctx.moveTo(kp[a * 3] * sx, kp[a * 3 + 1] * sy);
+        ctx.lineTo(kp[b * 3] * sx, kp[b * 3 + 1] * sy);
+        ctx.stroke();
+      }
+      ctx.fillStyle = C_KP;
+      for (var k = 0; k < n; k++) {
+        if (kp[k * 3 + 2] <= KP_CONF) continue;
+        ctx.beginPath();
+        ctx.arc(kp[k * 3] * sx, kp[k * 3 + 1] * sy, radius, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    if (showLabel) {
+      var text = '#' + (p.track_id != null ? p.track_id : '?');
+      if (p.prob != null) text += ' p=' + p.prob.toFixed(2);
+      if (p.coverage != null) text += ' cov=' + p.coverage.toFixed(2);
+      var fs = Math.max(10, Math.round(W / 640 * 12));
+      ctx.font = fs + 'px ui-monospace, Menlo, Consolas, monospace';
+      var tw = ctx.measureText(text).width;
+      var lx = x1, ly = y1 - 4;
+      if (ly - fs < 0) ly = y2 + fs + 4;              // 贴顶就挪到框下面
+      ctx.fillStyle = C_TEXT_BG;
+      ctx.fillRect(lx - 2, ly - fs, tw + 6, fs + 4);
+      // 概率过阈值标红，与板端 prob_color() 一致
+      ctx.fillStyle = (p.prob != null && p.prob >= PROB_ALERT) ? '#ff5555' : C_TEXT;
+      ctx.fillText(text, lx + 1, ly - 2);
+    }
+  }
+
+  function clear() {
+    if (canvas.width && canvas.height) ctx.clearRect(0, 0, canvas.width, canvas.height);
+  }
+
+  /* ── 控件 ─────────────────────────────────────────────────────── */
+  function bindToggles() {
+    if (!toolbar) return;
+    toolbar.querySelectorAll('[data-overlay-flag]').forEach(function (box) {
+      var key = box.getAttribute('data-overlay-flag');
+      box.checked = (key === 'skel') ? showSkel : (key === 'box') ? showBox : showLabel;
+      box.addEventListener('change', function () {
+        if (key === 'skel') showSkel = box.checked;
+        else if (key === 'box') showBox = box.checked;
+        else showLabel = box.checked;
+        if (!box.checked) clear();
+      });
+    });
+    var slider = toolbar.querySelector('[data-overlay-latency]');
+    if (slider) {
+      slider.addEventListener('input', function () {
+        manualLatency = parseInt(slider.value, 10) || 0;
+      });
+    }
+  }
+
+  /* ── 起停：跟着**视频真实状态**走，不跟按钮走 ─────────────────────
+     ⚠️⚠️ 不能监听播放按钮。WebRTC 的 `ontrack` 是**异步**的（要等 SDP 交换完），
+     点下去那一刻 `video.hidden` 还是 `true` —— 按按钮判断会得出"没在播"，
+     开关栏永远不出现。2026-10-30 首次上线就踩了这个，用户报"没看到开关栏"。
+     改成每帧读 video 的真实状态，起停都在这里收敛。 */
+  var connected = false;
+
+  function tick() {
+    rafId = window.requestAnimationFrame(tick);
+    var playing = !video.hidden && !video.paused && (video.srcObject || video.src);
+    if (playing) {
+      if (!connected) {
+        connected = true;
+        lastStatsAt = 0;          // 新连接，延迟立刻重估一次
+        connect();
+        if (toolbar) toolbar.hidden = false;
+        if (liveBadge) liveBadge.hidden = false;
+      }
+      estimateLatency();
+      drawOnce();
+    } else if (connected) {
+      connected = false;
+      disconnect();
+      if (toolbar) toolbar.hidden = true;
+      if (liveBadge) liveBadge.hidden = true;
+      lastTkSec = -1;
+      clear();
+    }
+  }
+
+  bindToggles();
+  if (toolbar) toolbar.hidden = true;
+  if (liveBadge) liveBadge.hidden = true;
+  rafId = window.requestAnimationFrame(tick);
+})();
+</script>

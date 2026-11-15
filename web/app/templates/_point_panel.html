@@ -1,0 +1,278 @@
+{# ==========================================================================
+   点位详情面板（抽屉内容）—— 2026-11-05 第93轮改版·二 / 二改（方案 A）
+   入口：/admin/points/<point_id>（整页直开）｜列表点「管理」经 ?drawer=1 注入
+
+   用户原话：「点位详情页面换一种方便的形式，这样的页面信息量太小了」
+   ⇒ 拍板右侧抽屉 + 不放实时画面（管理员账号无病区，取不到流）。
+   二改原话：「设备页面的功能不要和点位功能重复了」⇒ **每件事只有一个家**：
+     · 设备登记（新增/编辑档案/启停）→ /admin/devices
+     · 绑定/解绑 + 判定策略 + 设备摘要 → 这里
+   所以本文件里**没有**编辑设备表单，也没有 12 项全档案。
+
+   依赖外层（head_points.html 提供）：
+     point（_point_rows 的一行）、device（_devices 的一行，可 none）、
+     device_list（全量设备，自己筛 free）、zone_list、ward_names、
+     config_device / config、admin_mode、request
+   ⚠️ include 不继承调用方的宏导入，宏必须自己 import。
+   ========================================================================== #}
+{% from "_macros.html" import icon, fmt_iso_time, iso %}
+
+{% set base = '/admin/points/' ~ point.point_id %}
+{% set qp = request.query_params %}
+{% set cfg = config if config is defined and config else {} %}
+{% set desired = cfg.get('desired') if cfg else none %}
+{% set cur_rev = desired.rev if desired else 0 %}
+{#- 抽屉里的小导航栈：概况常驻，② 与表单互斥。
+    否则点「判定策略」后表单落在 640px 抽屉的**折叠线以下**，看着像没反应。
+    2026-11-05 二改：`?edit=`（设备档案）不再属于这一页，已移回设备台账。 -#}
+{% set cfg_id = qp.get('config') %}
+{% set form_mode = (qp.get('pt') == '1')
+                   or (cfg_id and device and cfg_id == device.device_id) %}
+
+{#- ── ① 点位概况 ────────────────────────────────────────────────────── -#}
+<section class="fg-panel fg-col-12">
+  <div class="fg-panel__head">
+    <h2 class="fg-panel__title">{{ point.name }}</h2>
+    <span class="fg-panel__sub">
+      {{ ward_names.get(point.ward_id) or point.ward_id }}
+      · {{ point.zone_name or '未分组' }}
+    </span>
+    <div class="fg-panel__actions">
+      <a class="fg-btn fg-btn--ghost fg-btn--sm"
+         href="{{ base }}?pt=1" data-detail-open="{{ base }}?pt=1">
+        {{ icon('settings', 16) }}编辑点位
+      </a>
+      {% if point.is_active %}
+      <button type="button" class="fg-btn fg-btn--ghost fg-btn--sm"
+              data-api-action
+              data-api-url="/api/v1/admin/points/{{ point.point_id }}"
+              data-api-method="PATCH"
+              data-api-body='{"is_active": false}'
+              data-confirm="停用这个点位后，它不再出画面、也不再接收这个点位的告警。确定停用？">
+        {{ icon('power', 16) }}停用点位
+      </button>
+      {% else %}
+      <button type="button" class="fg-btn fg-btn--ghost fg-btn--sm"
+              data-api-action
+              data-api-url="/api/v1/admin/points/{{ point.point_id }}"
+              data-api-method="PATCH"
+              data-api-body='{"is_active": true}'>
+        {{ icon('power', 16) }}启用点位
+      </button>
+      {% endif %}
+      <button type="button" class="fg-drawer__close" data-drawer-close aria-label="关闭">
+        {{ icon('x', 20) }}
+      </button>
+    </div>
+  </div>
+  <div class="fg-panel__body">
+    <div class="fg-freshbar">
+      <span class="fg-freshbar__item">
+        <span class="fg-freshbar__k">告警地点</span>
+        <span class="fg-freshbar__v fg-mono">{{ point.light_key }}</span>
+      </span>
+      <span class="fg-freshbar__item">
+        <span class="fg-freshbar__k">区域</span>
+        <span class="fg-freshbar__v">{{ point.zone_name or '未分组' }}</span>
+      </span>
+      <span class="fg-freshbar__item">
+        <span class="fg-freshbar__k">状态</span>
+        <span class="fg-freshbar__v {% if not point.is_active %}is-danger{% endif %}">
+          {%- if not point.is_active -%}已停用
+          {%- elif not point.device_id -%}未绑定设备
+          {%- elif point.online -%}在线
+          {%- else -%}离线{%- endif -%}
+        </span>
+      </span>
+      <span class="fg-freshbar__item">
+        <span class="fg-freshbar__k">来源</span>
+        <span class="fg-freshbar__v">{{ '摄像头' if point.source_type == 'camera' else point.source_type }}</span>
+      </span>
+    </div>
+    {#- 同一告警地点：点位自己的事实（不是设备档案），要能看出「一处地点管几个点位」 -#}
+    {% set siblings = (point_list if point_list is defined else [])
+                      | selectattr('light_key', 'equalto', point.light_key)
+                      | rejectattr('point_id', 'equalto', point.point_id) | list %}
+    {% if siblings %}
+    <p class="fg-hint fg-mt-3">
+      同一个告警地点还有 {{ siblings|length }} 个点位：{{ siblings | map(attribute='name') | join('、') }}
+      —— 它们的告警算在同一处。
+    </p>
+    {% endif %}
+  </div>
+</section>
+
+{#- ── ② 这个点位显示的设备（只有概况态才渲染；表单态让位给 ③④）──────── #}
+{% if not form_mode %}
+<section class="fg-panel fg-col-12">
+  <div class="fg-panel__head">
+    <h2 class="fg-panel__title">显示的设备</h2>
+    {% if device %}
+    <div class="fg-panel__actions">
+      <span class="fg-tag {% if not device.is_active %}fg-tag--retracted{% elif device.online %}fg-tag--confirmed{% else %}fg-tag--pending{% endif %}">
+        {%- if not device.is_active -%}已停用
+        {%- elif device.online -%}在线
+        {%- else -%}离线{%- endif -%}
+      </span>
+    </div>
+    {% endif %}
+  </div>
+
+  {% if device %}
+  <div class="fg-panel__body">
+    {#- 摘要 6 项（用户拍板「方案 A」）：设备档案 12 项只在设备台账里显示一次。
+        这里只回答「这个点位现在用哪台机器、它活着吗、策略生效了吗」。 -#}
+    <dl class="fg-devcard__spec" style="border-top:0;padding-top:0">
+      <div>
+        <dt>设备码</dt>
+        <dd class="fg-mono">{{ device.device_code }}</dd>
+      </div>
+      <div>
+        <dt>设备名</dt>
+        <dd title="{{ device.device_name }}">{{ device.device_name }}</dd>
+      </div>
+      <div>
+        <dt>状态</dt>
+        <dd>
+          <span class="fg-tag {% if not device.is_active %}fg-tag--retracted{% elif device.online %}fg-tag--confirmed{% else %}fg-tag--pending{% endif %}">
+            {%- if not device.is_active -%}已停用
+            {%- elif device.online -%}在线
+            {%- else -%}离线{%- endif -%}
+          </span>
+        </dd>
+      </div>
+      <div>
+        <dt>推流</dt>
+        <dd class="fg-mono" title="这台设备推到 mediamtx 的路径名；点位绑定它之后画面和骨架都走这条流">
+          {%- if device.stream_path -%}{{ device.stream_path }}
+          {%- else -%}<span class="fg-muted">未登记</span>{%- endif -%}
+        </dd>
+      </div>
+      <div>
+        <dt>策略版本</dt>
+        <dd class="fg-mono">
+          {%- if not desired -%}<span class="fg-muted">未配置</span>
+          {%- elif device.last_policy_rev == cur_rev -%}rev {{ cur_rev }} · 已生效
+          {#- 二十改：原 tooltip 写「**板端**最多约 25 秒拉到」—— 换词之外还去掉了机制
+              （「拉」是长轮询的实现细节，用户改不了也不关心），只回答「还要等多久」。 -#}
+          {%- else -%}rev {{ cur_rev }} · <span title="最多约 25 秒生效">待生效</span>{%- endif -%}
+        </dd>
+      </div>
+      <div>
+        <dt>最后心跳</dt>
+        <dd>
+          {%- if device.last_seen_at -%}
+          <span data-relative-time="{{ iso(device.last_seen_at) }}">{{ fmt_iso_time(device.last_seen_at) }}</span>
+          {%- else -%}—{%- endif -%}
+        </dd>
+      </div>
+    </dl>
+    <p class="fg-hint fg-mt-3">
+      设备档案与启停在
+      <a href="/admin/devices?edit={{ device.device_id }}">设备台账</a>里维护。
+    </p>
+  </div>
+
+  <div class="fg-panel__foot">
+    <a class="fg-btn fg-btn--secondary fg-btn--sm"
+       href="{{ base }}?config={{ device.device_id }}"
+       data-detail-open="{{ base }}?config={{ device.device_id }}">
+      {{ icon('activity', 16) }}判定策略
+    </a>
+    <button type="button" class="fg-btn fg-btn--ghost fg-btn--sm"
+            data-api-action
+            data-api-url="/api/v1/admin/points/{{ point.point_id }}"
+            data-api-method="PATCH"
+            data-api-body='{"device_id": null}'
+            data-confirm="解绑后这个点位不再出画面；设备本身不会被删除，仍在设备台账里。确定解绑？">
+      解绑这台设备
+    </button>
+    <a class="fg-btn fg-btn--ghost fg-btn--sm"
+       href="/admin/devices?edit={{ device.device_id }}">
+      {{ icon('settings', 16) }}编辑设备档案
+    </a>
+  </div>
+
+  {% else %}
+  <div class="fg-panel__body">
+    <p class="fg-hint fg-mb-4">这个点位还没有绑定设备，不出画面。</p>
+    <form data-api-form
+          data-api-endpoint="/api/v1/admin/points/{{ point.point_id }}"
+          data-api-method="PATCH"
+          data-success-url="{{ base }}"
+          data-success-text="已绑定">
+      <div class="fg-formgrid">
+        <div class="fg-field">
+          <label class="fg-label" for="bind-device">绑定设备<span class="fg-label__req" aria-hidden="true"></span></label>
+          <select class="fg-select" id="bind-device" name="device_id" required>
+            <option value="">选择一台设备…</option>
+            {% for d in device_list if not d.live_point_id %}
+            <option value="{{ d.device_id }}">{{ d.device_code }}</option>
+            {% endfor %}
+          </select>
+          <span class="fg-hint">列表里是还没有被其他点位占用的设备。</span>
+        </div>
+      </div>
+      <div class="fg-error-text fg-mt-3" data-form-error hidden></div>
+      <div class="fg-panel__foot" style="padding-left:0;padding-right:0">
+        <button type="submit" class="fg-btn fg-btn--primary">{{ icon('map-pin', 16) }}绑定</button>
+        <span class="fg-hint">新设备先到「设备台账 → 新建设备」登记。</span>
+      </div>
+    </form>
+  </div>
+  {% endif %}
+</section>
+{% endif %}
+
+{#- ── ③ 编辑点位（?pt=1）───────────────────────────────────────────── -#}
+{% if qp.get('pt') == '1' %}
+<section class="fg-panel fg-col-12">
+  <div class="fg-panel__head">
+    <h2 class="fg-panel__title">编辑点位</h2>
+    <div class="fg-panel__actions">
+      <a class="fg-btn fg-btn--ghost fg-btn--sm" href="{{ base }}">取消</a>
+    </div>
+  </div>
+  <form data-api-form
+        data-api-endpoint="/api/v1/admin/points/{{ point.point_id }}"
+        data-api-method="PATCH"
+        data-success-url="{{ base }}"
+        data-success-text="已保存">
+    <div class="fg-panel__body">
+      <div class="fg-formgrid">
+        <div class="fg-field">
+          <label class="fg-label" for="pt-name">点位名<span class="fg-label__req" aria-hidden="true"></span></label>
+          <input class="fg-input" id="pt-name" name="name" maxlength="64" required
+                 value="{{ point.name }}">
+        </div>
+        <div class="fg-field">
+          <label class="fg-label" for="pt-zone">所属区域</label>
+          <select class="fg-select" id="pt-zone" name="zone_id">
+            <option value="">未分组</option>
+            {% for zone in zone_list if zone.ward_id == point.ward_id %}
+            <option value="{{ zone.zone_id }}"
+              {% if point.zone_id == zone.zone_id %}selected{% endif %}>{{ zone.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="fg-field fg-field--full">
+          <label class="fg-label" for="pt-light">告警地点</label>
+          <input class="fg-input" id="pt-light" name="light_key" maxlength="64"
+                 value="{{ point.light_key }}">
+          <span class="fg-hint">同一走廊的摄像头填同一个，只算一处告警。</span>
+        </div>
+      </div>
+      <div class="fg-error-text fg-mt-3" data-form-error hidden></div>
+    </div>
+    <div class="fg-panel__foot">
+      <button type="submit" class="fg-btn fg-btn--primary">保存修改</button>
+      <a class="fg-btn fg-btn--ghost" href="{{ base }}">取消</a>
+    </div>
+  </form>
+</section>
+{% endif %}
+
+{#- ── ④ 判定策略（?config=<id>）—— 设备档案编辑在设备台账页，不在这里 ──── -#}
+{% if cfg_id and config_device is defined and config_device %}
+  {% include "_policy_form.html" %}
+{% endif %}

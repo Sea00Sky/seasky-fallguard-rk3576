@@ -1,0 +1,62 @@
+{# ==========================================================================
+   新增区域表单（partial，2026-11-05 三改）
+   从 head_points.html 搬来：表单不再挂在列表下方，改由右侧抽屉承载。
+   ⚠️ include 不继承调用方的宏导入，icon 必须自己 import。
+   ========================================================================== #}
+{% from "_macros.html" import icon %}
+{#- 新增区域：与点位同一页（区域是点位的分组） -#}
+{% if admin_mode and request.query_params.get('zone') == '1' %}
+<section class="fg-panel fg-col-12">
+  <div class="fg-panel__head">
+    <h2 class="fg-panel__title">新增区域</h2>
+    <div class="fg-panel__actions">
+      <a class="fg-btn fg-btn--ghost fg-btn--sm" href="{{ base }}" data-drawer-close>取消</a>
+      <button type="button" class="fg-drawer__close" data-drawer-close aria-label="关闭">
+        {{ icon('x', 20) }}
+      </button>
+    </div>
+  </div>
+  <form data-api-form data-api-endpoint="/api/v1/admin/zones" data-api-method="POST"
+        data-success-url="{{ base }}" data-success-text="区域已创建">
+    <div class="fg-panel__body">
+      <div class="fg-formgrid">
+        <div class="fg-field">
+          <label class="fg-label" for="zone-ward">所属病区<span class="fg-label__req" aria-hidden="true"></span></label>
+          <select class="fg-select" id="zone-ward" name="ward_id" required>
+            <option value="">请选择病区</option>
+            {% for w in ward_list %}
+            <option value="{{ w.ward_id }}">{{ w.ward_name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="fg-field">
+          <label class="fg-label" for="zone-name">区域名<span class="fg-label__req" aria-hidden="true"></span></label>
+          <input class="fg-input" id="zone-name" name="name" maxlength="40" required
+                 placeholder="北区病房">
+        </div>
+        <div class="fg-field">
+          <label class="fg-label" for="zone-type">类型</label>
+          <select class="fg-select" id="zone-type" name="zone_type">
+            <option value="ward_room">病房</option>
+            <option value="corridor">走廊</option>
+            <option value="bathroom">卫生间</option>
+            <option value="dayroom">活动室</option>
+            <option value="stairwell">楼梯间</option>
+            <option value="nurse_station">护士站</option>
+            <option value="other">其他</option>
+          </select>
+        </div>
+        <div class="fg-field">
+          <label class="fg-label" for="zone-floor">楼层</label>
+          <input class="fg-input" id="zone-floor" name="floor" maxlength="16" placeholder="4F">
+        </div>
+      </div>
+      <div class="fg-error-text fg-mt-3" data-form-error hidden></div>
+    </div>
+    <div class="fg-panel__foot">
+      <button type="submit" class="fg-btn fg-btn--primary">创建区域</button>
+      <a class="fg-btn fg-btn--ghost" href="{{ base }}" data-drawer-close>取消</a>
+    </div>
+  </form>
+</section>
+{% endif %}

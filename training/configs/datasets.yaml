@@ -1,0 +1,62 @@
+# Dataset facts verified on 2026-10-19. Update only with fresh measurements.
+
+le2i:
+  raw_root: datasets/raw/le2i/archive
+  video_ext: .avi
+  fps: 25
+  width: 320
+  height: 240
+  scenes:
+    Coffee_room_01: {videos: 48, annotated: 48}
+    Coffee_room_02: {videos: 22, annotated: 22}
+    Home_01: {videos: 30, annotated: 30}
+    Home_02: {videos: 30, annotated: 30}
+    Lecture_room: {videos: 27, annotated: 0}
+    Office: {videos: 33, annotated: 0}
+  annotation:
+    format: "line1=fall_start, line2=fall_end, then frame,person,x1,y1,x2,y2"
+    expected_total: 130
+    expected_valid: 96
+    expected_invalid_interval: 31
+    expected_missing_header: 3
+  event_unit: video
+
+mcfd:
+  # The source archive nests dataset/dataset; the raw copy preserves it.
+  raw_root: datasets/raw/mcfd/dataset/dataset
+  annotation_csv: datasets/raw/mcfd/data_tuple3.csv
+  video_ext: .avi
+  fps: 120
+  width: 720
+  height: 480
+  annotation:
+    columns: [chute, cam, start, end, label]
+    expected_csv_rows: 552
+    expected_rows_with_video: 551
+    expected_no_video_rows: 1
+    expected_label_0: 288       # among rows with video
+    expected_label_1: 263       # among rows with video; total label1 = 264 incl. no-video row
+    interval_frames: 30
+  chutes: 23
+  cameras: [1, 2, 3, 4, 5, 6, 7, 8]
+  unannotated_chute: 24
+  event_unit: chute
+
+urfd:
+  raw_root: datasets/raw/urfd
+  video_ext: .mp4
+  fps: 30
+  width: 640
+  height: 240
+  layout:
+    type: side_by_side
+    left: grayscale
+    right: rgb
+    separator_x: [316, 321]
+    use_half: right
+  counts: {fall: 30, adl: 40, duplicate_conv: 3}
+  annotation:
+    onset_offset: none
+    fall_status_initial: needs_annotation
+    adl_status: all_negative
+  event_unit: video

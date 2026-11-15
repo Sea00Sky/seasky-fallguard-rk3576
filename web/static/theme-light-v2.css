@@ -1,0 +1,158 @@
+/* ==========================================================================
+   衡护 HENGUARD · 浅色主题 V2（临床 · 明亮）
+   --------------------------------------------------------------------------
+   加载顺序：fonts.css → tokens.css → app.css → theme-light-v2.css → theme-dark.css
+   启用方式：<html data-theme="v2">
+   回滚方式：改成 data-theme="light" 即回到 V1 原样（本文件整体失效）
+
+   为什么需要它：
+   V1 的浅色本身就有「企业后台模板」的味道——灰绿画布 #EDF1EE 上浮着一块块
+   纯白卡片 + 1px 边框，层级只能靠「分块」表达。V2 的三刀都在这个根因上：
+
+   ① 画布提到接近白（#F4F6F4）：卡片和白底不再是对比关系，白块感消失；
+   ② 面板去掉四边框，只留一条极淡下沿：不再「一块块框」；
+   ③ 主色收窄使用面：墨绿只留给主按钮、链接、选中态，不再满屏铺。
+
+   左导航保持深色（#0B2B26）：13% 面积，是品牌锚点，也是 HIS 的常见做法。
+   如果连这块也要浅，单独说，改一行即可。
+
+   对比度实测（对 #F4F6F4 画布）：
+     正文 15.74 / 次要 8.44 / 弱化 4.59（刚好过 4.5）
+     链接 6.97 / 主按钮白字 8.10
+     控件边框 #7E8B84 vs 白 3.55（非文字控件门槛 3.0）
+     五态 chip 5.87–6.23
+   ========================================================================== */
+
+html[data-theme="v2"] {
+  color-scheme: light;
+
+  /* ===== 表面：画布与卡片几乎同色 ===== */
+  --fg-bg-canvas: #F4F6F4;
+  --fg-bg-surface: #FFFFFF;
+  --fg-bg-raised: #FFFFFF;
+  --fg-bg-table-head: #F7F9F7;
+  --fg-bg-table-zebra: #FBFCFB;
+  --fg-bg-table-hover: #F0F4F1;
+  --fg-bg-table-selected: #E1EDE7;
+
+  /* ===== 文字：比 V1 深一档，层级更多靠字重与字号 ===== */
+  --fg-text-primary: #131E1A;
+  --fg-text-secondary: #3D4B45;
+  --fg-text-tertiary: #64736C;
+  --fg-text-disabled: #A7B2AC;
+  --fg-link: #0C5F52;
+  --fg-link-hover: #094A40;
+
+  /* ===== 边框：淡一档，目标是「用得越少越好」 ===== */
+  --fg-border-subtle: #EAEFEC;
+  --fg-border-default: #DFE6E2;
+  --fg-border-strong: #C6D0CB;
+  --fg-border-control: #7E8B84;
+  --fg-border-focus: #0C5F52;
+
+  /* ===== 语义别名 ===== */
+  --fg-canvas: #F4F6F4;
+  --fg-surface: #FFFFFF;
+  --fg-border: #DFE6E2;
+  --fg-text: #131E1A;
+  --fg-text-muted: #64736C;
+
+  /* ===== 数字：裁好的等宽字体接到数字位上 =====
+     中文仍走系统字体（浏览器按字形回落）。 */
+  --fg-font-num: "IBM Plex Mono", "Source Han Sans SC", "PingFang SC", "Microsoft YaHei UI", sans-serif;
+
+  /* ===== 布局：右栏宽度 =====
+     2026-11-02 用户拍板：字号、间距、控件高度一律按线上原值，
+     只改布局。右栏是唯一一处尺寸调整——360 在 1366 屏上占掉 34%，
+     而它装的是「画面小窗 + 待处置队列」，辅助信息不该拿走三分之一。
+     320 之后主区 734 / 右栏 30%，且 320 正好够 16:9 小窗用。 */
+  --fg-side-w: 320px;
+}
+
+/* ==========================================================================
+   组件层：把「白框」从视觉里拿掉
+   ========================================================================== */
+
+/* 面板：不要四边框，只在下方留一条极淡的分隔。
+   画布已经是 #F4F6F4，白面板本来就能靠明度差站住，再加框就是多一层噪声。 */
+html[data-theme="v2"] .fg-panel {
+  border-color: transparent;
+  box-shadow: 0 1px 0 0 var(--fg-border-subtle);
+}
+
+/* 面板头：V1 那条 border-bottom 在白面板上是第二条横线，与上面的下沿重复 */
+html[data-theme="v2"] .fg-panel__head {
+  border-bottom-color: transparent;
+}
+
+/* 主角画面：hero 形态本来就不要卡片，去掉下沿阴影，让它彻底贴在画布上 */
+html[data-theme="v2"] .fg-live-panel--hero.fg-panel {
+  box-shadow: none;
+}
+
+/* 门灯带：贴在画布上，不需要自带的边框；有告警的灯仍保留底色与边框 */
+html[data-theme="v2"] .fg-doorlight:not(.is-alert) {
+  border-color: transparent;
+  background: var(--fg-bg-surface);
+}
+
+/* 白板上的数字：等宽 + 稍微收紧字距，扫读时更容易比大小 */
+html[data-theme="v2"] .fg-wb__v {
+  letter-spacing: -0.01em;
+}
+
+/* 表格容器：与面板同一套处理——去四边框，只留下沿 */
+html[data-theme="v2"] .fg-table-wrap {
+  border-color: transparent;
+  box-shadow: 0 1px 0 0 var(--fg-border-subtle);
+}
+
+/* 已经被面板包住的表格不要再套一层边框和下沿，否则就是两道边 */
+html[data-theme="v2"] .fg-panel .fg-table-wrap {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+/* ==========================================================================
+   实时画面 · 小窗形态（工作台右栏顶部）
+   --------------------------------------------------------------------------
+   2026-11-02 拍板：画面从「主区顶到边」改为「右栏小窗」。
+   原来 16:9 按宽度撑满，1366 屏上有 390px 高，把告警流挤出首屏——
+   值班时先要看见的是「谁在等」，画面是用来核对的，不是用来看的。
+   ========================================================================== */
+html[data-theme="v2"] .fg-live-panel--compact .fg-live {
+  max-width: none;           /* hero 那条 124vh 上限在小窗里毫无意义 */
+}
+
+/* 标题栏在小窗里只有一行位置：标题 + 播放按钮。
+   副标题由模板按变体决定不渲染（见 _live_panel.html），这里只管内边距。 */
+html[data-theme="v2"] .fg-live-panel--compact > .fg-panel__head {
+  gap: var(--fg-space-2);
+}
+
+/* 播放中的状态角标：小窗里 16px 内缩太浪费，收到 8px。
+   只调位置，字号沿用线上原值。 */
+html[data-theme="v2"] .fg-live-panel--compact .fg-live__state {
+  left: 8px;
+  bottom: 8px;
+  max-width: calc(100% - 16px);
+  padding: 4px 8px;
+}
+
+/* 骨架/框/编号三个勾选框在 288px 宽一定会换行，让它们横着排 */
+html[data-theme="v2"] .fg-live-panel--compact .fg-live__overlay-bar {
+  flex-wrap: wrap;
+  gap: var(--fg-space-1) var(--fg-space-3);
+}
+
+/* Tab 条和筛选栏现在都提到页面层了，两条 1px 分隔线只隔十几像素，
+   读起来像「卡了两次」。V2 只留 Tab 条那一条，筛选栏改用留白收尾。
+
+   选择器只认「页面栅格的直接子元素」：
+   - 面板里的 .fg-tabs 有自己的内边距，不受影响；
+   - head_staff 的 .fg-tabs--page 不在本轮迁移范围，不能顺带改它的间距。 */
+html[data-theme="v2"] .fg-col-12 > .fg-filters {
+  border-bottom: 0;
+  padding-bottom: var(--fg-space-2);
+}

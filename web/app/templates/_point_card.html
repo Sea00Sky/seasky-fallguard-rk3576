@@ -1,0 +1,75 @@
+{# ==========================================================================
+   单张点位卡（被 head_points.html 按区域分组循环 include）
+   依赖外层：p（点位 dict）、admin_mode、pbl（pending_by_location）
+   ⚠️ 本卡只读：绑定/判定策略 在点位详情 /admin/points/<id>；
+      设备档案与启停归设备台账 /admin/devices（2026-11-05 二改，方案 A）。
+   2026-11-06 九改：加四个 data-* 给**前端筛选**用（服务端不参与筛选，见 head_points.html）。
+      data-state 四态与卡头那个 tag 一字不差：disabled / unbound / online / offline，
+      顺序不能换 —— 已停用的点位可能还绑着设备，状态得先说「停用」。
+   ========================================================================== #}
+{% from "_macros.html" import icon, fmt_iso_time, iso %}
+<article class="fg-devcard"
+         data-search="{{ (p.name ~ ' ' ~ p.light_key ~ ' ' ~ (p.device_code or ''))|e }}"
+         data-bound="{{ 1 if p.device_id else 0 }}"
+         data-stream="{{ 1 if p.stream_path else 0 }}"
+         data-state="{% if not p.is_active %}disabled{% elif not p.device_id %}unbound{% elif p.online %}online{% else %}offline{% endif %}">
+  <div class="fg-devcard__head">
+    <span class="fg-tag {% if not p.is_active %}fg-tag--retracted{% elif not p.device_id %}fg-tag--pending{% elif p.online %}fg-tag--confirmed{% else %}fg-tag--pending{% endif %}">
+      {%- if not p.is_active -%}已停用
+      {%- elif not p.device_id -%}未绑定
+      {%- elif p.online -%}在线
+      {%- else -%}离线{%- endif -%}
+    </span>
+    <span class="fg-devcard__code fg-mono">{{ p.light_key }}</span>
+  </div>
+
+  <div class="fg-devcard__head">
+    <h3 class="fg-devcard__name">{{ p.name }}</h3>
+    <span class="fg-devcard__code fg-mono">{{ p.zone_name or '未分组' }}</span>
+  </div>
+
+  <dl class="fg-devcard__spec">
+    <div>
+      <dt>显示设备</dt>
+      <dd>
+        {%- if p.device_code -%}<span class="fg-mono">{{ p.device_code }}</span>
+        {%- else -%}<span class="fg-muted">未绑定设备</span>{%- endif -%}
+      </dd>
+    </div>
+    <div>
+      <dt>画面</dt>
+      <dd>
+        {%- if p.stream_path -%}<span class="fg-mono">{{ p.stream_path }}</span>
+        {%- else -%}<span class="fg-muted">未配置</span>{%- endif -%}
+      </dd>
+    </div>
+    <div>
+      <dt>最后心跳</dt>
+      <dd>
+        {%- if p.device_last_seen_at -%}
+        <span data-relative-time="{{ iso(p.device_last_seen_at) }}">{{ fmt_iso_time(p.device_last_seen_at) }}</span>
+        {%- else -%}—{%- endif -%}
+      </dd>
+    </div>
+    {% set _n = pbl.get(p.light_key) if pbl is defined else none %}
+    {% if _n %}
+    <div>
+      <dt>待处置</dt>
+      <dd><span class="fg-tag fg-tag--s2">{{ _n }} 条</span></dd>
+    </div>
+    {% endif %}
+  </dl>
+
+  <div class="fg-devcard__actions">
+    {#- 「看画面」只给护士长：管理员账号没有病区，/nurse/camera 的守卫会 403 -#}
+    {% if not admin_mode %}
+    <a class="fg-btn fg-btn--ghost fg-btn--sm"
+       href="/nurse/camera/{{ p.point_id }}">{{ icon('camera', 16) }}看画面</a>
+    {% else %}
+    {#- 有 JS：原地开右侧抽屉；无 JS：整页打开同一份内容（服务端把抽屉渲染成展开态）-#}
+    <a class="fg-btn fg-btn--ghost fg-btn--sm"
+       href="/admin/points/{{ p.point_id }}"
+       data-detail-open="/admin/points/{{ p.point_id }}">{{ icon('settings', 16) }}管理设备</a>
+    {% endif %}
+  </div>
+</article>

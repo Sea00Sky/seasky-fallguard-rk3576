@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# 配置与密钥：绝不入库
+.env
+*.env.local
+web.env
+*.pass
+*.pem
+*.key
+
+# 运行时产物
+*.log
+*.sqlite
+*.sqlite3
+*.db
+replay_out/
+snapshots/
+
+# 编辑器 / 系统
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+*.swp
+
+# 校验脚本的临时产物
+_check_templates.py

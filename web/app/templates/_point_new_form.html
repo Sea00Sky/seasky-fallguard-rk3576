@@ -1,0 +1,74 @@
+{# ==========================================================================
+   新增点位表单（partial，2026-11-05 三改）
+   从 head_points.html 搬来：表单不再挂在列表下方，改由右侧抽屉承载。
+   ⚠️ include 不继承调用方的宏导入，icon 必须自己 import。
+   ========================================================================== #}
+{% from "_macros.html" import icon %}
+{#- 新增点位：只定「点位叫什么、归哪个区域、显示哪台设备」 -#}
+{% if admin_mode and request.query_params.get('point') == '1' %}
+<section class="fg-panel fg-col-12">
+  <div class="fg-panel__head">
+    <h2 class="fg-panel__title">新增点位</h2>
+    <div class="fg-panel__actions">
+      <a class="fg-btn fg-btn--ghost fg-btn--sm" href="{{ base }}" data-drawer-close>取消</a>
+      <button type="button" class="fg-drawer__close" data-drawer-close aria-label="关闭">
+        {{ icon('x', 20) }}
+      </button>
+    </div>
+  </div>
+  <form data-api-form data-api-endpoint="/api/v1/admin/points" data-api-method="POST"
+        data-success-url="{{ base }}" data-success-text="点位已创建">
+    <div class="fg-panel__body">
+      <div class="fg-formgrid">
+        {% if admin_mode %}
+        <div class="fg-field">
+          <label class="fg-label" for="point-ward">所属病区<span class="fg-label__req" aria-hidden="true"></span></label>
+          <select class="fg-select" id="point-ward" name="ward_id" required>
+            <option value="">请选择病区</option>
+            {% for w in ward_list %}
+            <option value="{{ w.ward_id }}">{{ w.ward_name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        {% endif %}
+        <div class="fg-field">
+          <label class="fg-label" for="point-name">点位名<span class="fg-label__req" aria-hidden="true"></span></label>
+          <input class="fg-input" id="point-name" name="name" maxlength="64" required
+                 placeholder="512病房">
+        </div>
+        <div class="fg-field">
+          <label class="fg-label" for="point-zone">所属区域</label>
+          <select class="fg-select" id="point-zone" name="zone_id">
+            <option value="">未分组</option>
+            {% for zone in zone_list %}
+            <option value="{{ zone.zone_id }}">{{ zone.name }}</option>
+            {% endfor %}
+          </select>
+          <span class="fg-hint">没有合适的区域？<a href="{{ base }}?zone=1" data-detail-open="{{ base }}?zone=1">新建区域</a></span>
+        </div>
+        <div class="fg-field">
+          <label class="fg-label" for="point-device">显示哪台设备</label>
+          <select class="fg-select" id="point-device" name="device_id">
+            <option value="">先不绑（以后在点位行上绑）</option>
+            {% for d in device_list if not d.live_point_id %}
+            <option value="{{ d.device_id }}">{{ d.device_code }}</option>
+            {% endfor %}
+          </select>
+          <span class="fg-hint">只列还没被其他点位占用的设备。</span>
+        </div>
+        <div class="fg-field fg-field--full">
+          <label class="fg-label" for="point-light">告警地点</label>
+          <input class="fg-input" id="point-light" name="light_key" maxlength="64"
+                 placeholder="512病房（留空则用点位名）">
+          <span class="fg-hint">同一走廊的摄像头填同一个，只算一处告警。</span>
+        </div>
+      </div>
+      <div class="fg-error-text fg-mt-3" data-form-error hidden></div>
+    </div>
+    <div class="fg-panel__foot">
+      <button type="submit" class="fg-btn fg-btn--primary">创建点位</button>
+      <a class="fg-btn fg-btn--ghost" href="{{ base }}" data-drawer-close>取消</a>
+    </div>
+  </form>
+</section>
+{% endif %}

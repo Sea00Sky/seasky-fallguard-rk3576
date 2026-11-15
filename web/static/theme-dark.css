@@ -1,0 +1,268 @@
+/* ==========================================================================
+   衡护 HENGUARD · 深色主题 V2（临床工具）
+   --------------------------------------------------------------------------
+   加载顺序：fonts.css → tokens.css → app.css → theme-dark.css
+   启用方式：<html data-theme="dark">
+   回滚方式：删掉 data-theme 属性（本文件随即整体失效，V1 浅色原样恢复）
+
+   为什么单独成文件而不改 tokens.css：
+   ① V1 的 tokens.css 逐条带对比度推导注释，就地改会污染这份证据；
+   ② 回滚成本从「还原一批 hex」降到「删一个属性」；
+   ③ 深色需要的不只是换色，还有十来条组件级修补（下方程），集中一处才好审。
+
+   为什么不能「把浅色色阶整体反转」：
+   --fg-pine-100 在左导航、/me 头图、视频浮层里是当**亮色**用的，而那几块
+   本来就是深色区域；--fg-danger-700 一半场合是浅底红字、另一半是 toast 底色。
+   整体反转会把已经深色的区域弄坏，所以这里按「角色」逐条重定，而不是按色阶翻。
+
+   对比度全部实测（WCAG 2.1，脚本算的，不是估的）：
+     正文 15.19 / 次要 9.88 / 弱化 6.54（对 #121C18 表面）
+     控件边框 3.75（对 #17231E 输入框底，需 >=3.0）
+     五态 chip 字/底 7.41–10.05
+     主按钮 #2A7868 + #F2FBF7 = 5.00；悬停 4.51
+   ========================================================================== */
+
+html[data-theme="dark"] {
+  color-scheme: dark;
+
+  /* ===== 表面：靠亮度阶梯分层，不靠更多边框 ===== */
+  --fg-bg-canvas: #0B1310;
+  --fg-bg-surface: #121C18;
+  --fg-bg-raised: #17231E;
+  --fg-bg-nav: #080F0D;
+  --fg-bg-nav-hover: #101A16;
+  --fg-bg-nav-active: #16241F;
+  --fg-bg-table-head: #17231E;
+  --fg-bg-table-zebra: #141F1B;
+  --fg-bg-table-hover: #1C2A24;
+  --fg-bg-table-selected: #1F342B;
+  --fg-bg-video: #060B09;
+  --fg-bg-overlay: rgba(3, 8, 6, .62);
+
+  /* ===== 文字 =====
+     text-inverse 不改：它在 V1 里是「深色底上的亮字」（左导航、彩色实心按钮），
+     深色主题下这个角色不变。 */
+  --fg-text-primary: #EAF1ED;
+  --fg-text-secondary: #B9C6C0;
+  --fg-text-tertiary: #93A29B;
+  --fg-text-disabled: #6B7A73;
+  --fg-text-nav: #D6E9E2;
+  --fg-text-nav-muted: #8FBDAF;
+  --fg-link: #7FD0BC;
+  --fg-link-hover: #A5E3D3;
+
+  /* ===== 边框 ===== */
+  --fg-border-subtle: #1F2C26;
+  --fg-border-default: #2A3A33;
+  --fg-border-strong: #3E4C46;
+  --fg-border-control: #6E7D76;
+  --fg-border-focus: #7FD0BC;
+  --fg-border-nav: rgba(214, 233, 226, .10);
+
+  /* ===== 语义色：-50/-100 是底，-600/-700 是字 ===== */
+  --fg-danger-50: #2A1210;
+  --fg-danger-100: #44201B;
+  --fg-danger-600: #C63C32;
+  --fg-danger-700: #FF9A91;
+
+  --fg-warning-50: #241C0C;
+  --fg-warning-100: #3A2C12;
+  --fg-warning-600: #E0A23C;
+  --fg-warning-700: #F4C77A;
+
+  --fg-success-50: #0E2418;
+  --fg-success-100: #1B3B29;
+  --fg-success-600: #4FA772;
+  --fg-success-700: #8FDDAE;
+
+  --fg-info-50: #0D2230;
+  --fg-info-100: #173546;
+  --fg-info-600: #4E9BC0;
+  --fg-info-700: #A5D3EA;
+
+  --fg-accent-50: #241C0C;
+  --fg-accent-100: #3A2C12;
+  --fg-accent-500: #D9A441;
+  --fg-accent-600: #C9973F;
+  --fg-accent-700: #D9A441;
+  --fg-accent-800: #E8CE7A;
+
+  /* ===== 中性阶 =====
+     neutral-0 保持纯白：它只用于「彩色实心按钮上的字」。
+     neutral-900/950 不动：它们在 V1 里就是深色区域的底。
+     neutral-100/200 翻暗：它们是「弱化填充」（已归档标签底、骨架屏、柱状图零值）。 */
+  --fg-neutral-100: #1B2320;
+  --fg-neutral-200: #1F2C26;
+  --fg-neutral-300: #2A3A33;
+  --fg-neutral-400: #7A8981;
+  --fg-neutral-500: #8D9C95;
+  --fg-neutral-600: #93A29B;
+  --fg-neutral-700: #B0BDB6;
+  --fg-neutral-800: #C7D1CB;
+
+  /* ===== 品牌 =====
+     pine-600 在 V1 里兼两个角色：主按钮底色(#0E5A4E) + 图标/强调字色。
+     深色下拆开：--fg-primary 给按钮，pine-600 给强调字（必须够亮才看得见）。 */
+  --fg-pine-100: #D6E9E2;   /* 保持亮：左导航/头图里本来就是亮色角色 */
+  --fg-pine-600: #7FB8A8;   /* 强调字、柱状图、选中态 */
+
+  --fg-primary: #2A7868;
+  --fg-primary-deep: #080F0D;
+  --fg-primary-soft: #16241F;
+  --fg-canvas: #0B1310;
+  --fg-surface: #121C18;
+  --fg-border: #2A3A33;
+  --fg-text: #EAF1ED;
+  --fg-text-muted: #93A29B;
+  --fg-brass: #D9A441;
+
+  /* ===== 五态告警：深底亮字，五组色相仍互相可辨 ===== */
+  --fg-status-pending-fg: #FFB4AB;
+  --fg-status-pending-bg: #3A1917;
+  --fg-status-pending-border: #6E2E28;
+  --fg-status-pending-dot: #F0857C;
+
+  --fg-status-ack-fg: #A5D3EA;
+  --fg-status-ack-bg: #102A38;
+  --fg-status-ack-border: #23506A;
+  --fg-status-ack-dot: #7FC4E8;
+
+  --fg-status-resolved-fg: #8FDDAE;
+  --fg-status-resolved-bg: #0F2A1C;
+  --fg-status-resolved-border: #235840;
+  --fg-status-resolved-dot: #6FD39A;
+
+  --fg-status-retracted-fg: #A7B3AC;
+  --fg-status-retracted-bg: #1B2320;
+  --fg-status-retracted-border: #33403A;
+  --fg-status-retracted-dot: #8A968F;
+
+  --fg-status-false-fg: #E8CE7A;
+  --fg-status-false-bg: #2A2312;
+  --fg-status-false-border: #57471F;
+  --fg-status-false-dot: #D9A441;
+
+  /* ===== 级别标签（S1/S2/S3）===== */
+  --fg-s1: #FF9A91;
+  --fg-s2: #FFB07A;
+  --fg-s3: #E8CE7A;
+  --fg-s2-bg: #2E1A0E;
+  --fg-s2-border: #5C3517;
+  --fg-s3-bg: #2A2312;
+  --fg-s3-border: #57471F;
+  --fg-retracted: #98A2AD;
+  --fg-closed: #6FD39A;
+
+  /* ===== 门灯 ===== */
+  --fg-doorlight-ok: #4FCB84;
+  --fg-doorlight-idle: #4E9585;
+  --fg-doorlight-alert: #FF6B5E;
+  --fg-doorlight-halo: rgba(255, 107, 94, .18);
+
+  /* ===== 数字：把裁好的等宽字体接到数字位上 =====
+     只覆盖 --fg-font-num，中文仍走系统字体（浏览器按字形回落）。
+     放在深色块里而不是 fonts.css，是为了浅色回滚时 V1 逐字节不变。 */
+  --fg-font-num: "IBM Plex Mono", "Source Han Sans SC", "PingFang SC", "Microsoft YaHei UI", sans-serif;
+}
+
+/* ==========================================================================
+   组件级修补
+   下面每一条都是「token 覆盖管不到」的地方：要么组件直接引了原始色阶，
+   要么一个 token 在两个语境里意思相反。
+   ========================================================================== */
+
+/* 主按钮：悬停/按下在 V1 里是变深（pine-700/800）。深色底上再变深就看不见了，
+   所以反过来——悬停变亮，按下更深。实测 5.00 / 4.51 / 7.07。 */
+html[data-theme="dark"] .fg-btn--primary {
+  background: #2A7868;
+  border-color: #2A7868;
+  color: #F2FBF7;
+}
+
+html[data-theme="dark"] .fg-btn--primary:hover {
+  background: #357F6E;
+  border-color: #357F6E;
+  color: #F2FBF7;
+}
+
+html[data-theme="dark"] .fg-btn--primary:active {
+  background: #1F5F52;
+  border-color: #1F5F52;
+}
+
+/* 实心危险按钮：danger-700 在本主题里是「亮字色」，拿来当悬停底会白字压亮红。 */
+html[data-theme="dark"] .fg-btn--danger-solid:hover {
+  background: #A83228;
+  border-color: #A83228;
+}
+
+html[data-theme="dark"] .fg-btn--danger-solid {
+  background: #C63C32;
+  border-color: #C63C32;
+  color: #FFF1EF;
+}
+
+/* Toast：V1 用 -700 档当底色（浅色下是深红/深绿，深色下会变成刺眼亮块）。 */
+html[data-theme="dark"] .fg-toast--ok {
+  background: #0F2A1C;
+  border-color: #235840;
+  color: #8FDDAE;
+}
+
+html[data-theme="dark"] .fg-toast--error {
+  background: #3A1917;
+  border-color: #6E2E28;
+  color: #FFB4AB;
+}
+
+html[data-theme="dark"] .fg-toast--warn {
+  background: #2E2411;
+  border-color: #57471F;
+  color: #F4C77A;
+}
+
+/* 选中文字：pine-100 在本主题里仍是亮色，当选中底会导致浅字压浅底。 */
+html[data-theme="dark"] ::selection {
+  background: #2A4F45;
+  color: #F2FBF7;
+}
+
+/* 判定策略密钥输入框：V1 写的是 var(--fg-bg-subtle, #f5f6f8)，而这个 token
+   在 tokens.css 里根本不存在 ⇒ 永远渲染成近白色。深色下必须显式接管。 */
+html[data-theme="dark"] .fg-ingestkey {
+  background: #1B2320;
+  border-color: #2A3A33;
+  color: #EAF1ED;
+}
+
+/* 柱状图零值柱：neutral-200 已翻暗，但仍要比面板底再暗一档才读得出「这是 0」。 */
+html[data-theme="dark"] .fg-bars__bar[data-count="0"] {
+  background: #1B2320;
+}
+
+/* 下拉箭头：V1 把 #5C6B65 的 SVG 写死在 data URI 里，深色下等于看不见。
+   换成 --fg-text-tertiary 的深色值 #93A29B。 */
+html[data-theme="dark"] .fg-select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2393A29B' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+}
+
+/* 单选/复选的方框：V1 用 --fg-neutral-0（纯白）当底，深色下会变成刺眼白块。
+   neutral-0 在本主题里不能改（它还是实心按钮上的字色），所以就地接管。 */
+html[data-theme="dark"] .fg-choice__box {
+  background: #17231E;
+  border-color: #6E7D76;
+}
+
+html[data-theme="dark"] .fg-choice input:checked + .fg-choice__box {
+  background: #4E9585;
+  border-color: #4E9585;
+  box-shadow: inset 0 0 0 3px #17231E;
+}
+
+/* 选中态底色：V1 用 --fg-pine-50，而 pine-50 在视频浮层里是当亮色文字用的
+   （.fg-live__live），不能整体翻暗 ⇒ 只在这一处接管。 */
+html[data-theme="dark"] .fg-choice:has(input:checked) {
+  background: #16241F;
+  border-color: #4E9585;
+  color: #EAF1ED;
+}

@@ -1,0 +1,27 @@
+[Unit]
+# 快照上云：把网关存的 snaps/*.jpg 推到云端 fg.snapshot
+#
+# 为什么单独一个 unit：它只读网关 SQLite + 发 HTTP，不碰 NPU、不碰摄像头、
+# 不占 RKNN 会话，因此可以和 sensor-multi 同时跑，崩了也不影响检测。
+#
+# 依赖网关库：网关先写 events.db，本服务才有的传。排到它之后即可；
+# 不要写成 Wants/Requires —— 网关挂了检测还在跑，快照晚点传没事。
+After=network.target fallguard-gateway.service
+
+[Service]
+Type=simple
+# 与 sensor-multi 一致：服务账号 fallguard，脚本在 /opt/fallguard/board/scripts
+User=fallguard
+Group=fallguard
+WorkingDirectory=/opt/fallguard/board
+
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/usr/bin/python3 scripts/snapshot_uploader.py --interval 2
+
+Restart=always
+RestartSec=5
+# 退出时要 flush 状态文件，别硬杀
+TimeoutStopSec=10
+
+[Install]
+WantedBy=multi-user.target

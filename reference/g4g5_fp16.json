@@ -1,0 +1,59 @@
+{
+  "platform": "linux",
+  "rknn_toolkit2": "unknown",
+  "results": [
+    {
+      "gate": "G4",
+      "model": "stgcn",
+      "precision": "fp16",
+      "n": 1189,
+      "criteria": {
+        "threshold_flips_vs_onnx": 0,
+        "max_abs_dlogit": 0.02032756805419922,
+        "logit_tolerance": 0.05,
+        "max_abs_dprob_derived": 0.002978456260691098,
+        "prob_bound_implied_by_logit": 0.0125,
+        "closest_sample": {
+          "i": 733,
+          "p_onnx": 0.49786505841800127,
+          "p_rknn": 0.49665074589582076,
+          "margin_to_boundary": 0.0021349415819987283,
+          "error": 0.0012143125221805162,
+          "error_multiple_to_flip": 0.5687802103904309,
+          "n": 1189
+        },
+        "threshold_flips_vs_frozen_reference_evidence": 0,
+        "max_abs_dprob_onnx_vs_frozen_evidence": 1.3003470550887464e-06
+      },
+      "passed": true,
+      "note": "segment recall unchanged is NOT checked here: that needs the full 915-window replay, i.e. scripts/30 with an RKNN backend. Run it separately before claiming G5 complete.",
+      "rknn": "/mnt/e/毕业设计(医院的防跌撞嵌入式计算机视觉开发)/YOLOV26n-pose+ST-GCN++-量化部署/models/stgcnpp_v2_fp16.rknn"
+    },
+    {
+      "gate": "G4",
+      "model": "yolo",
+      "precision": "fp16",
+      "n_frames": 228,
+      "n_boxes": 326,
+      "n_keypoints": 5542,
+      "criteria": {
+        "iou_median": 0.9982930421829224,
+        "iou_median_min": 0.99,
+        "iou_p5": 0.9960403442382812,
+        "iou_p5_min": 0.95,
+        "kpt_frac_within_1px": 0.9922410682064237,
+        "kpt_frac_within_1px_min": 0.99,
+        "kpt_l2_max_px": 2.822551727294922,
+        "kpt_l2_max_allowed": 16.0,
+        "conf_abs_err_max": 0.028591632843017578,
+        "conf_abs_err_max_allowed": 0.05,
+        "count_mismatch_frames": 1,
+        "count_mismatch_fraction": 0.0043859649122807015,
+        "count_mismatch_fraction_allowed": 0.01,
+        "confidence_order_swaps": 2
+      },
+      "passed": true,
+      "rknn": "/mnt/e/毕业设计(医院的防跌撞嵌入式计算机视觉开发)/YOLOV26n-pose+ST-GCN++-量化部署/models/yolo26n_pose_480x640_fp16.rknn"
+    }
+  ]
+}

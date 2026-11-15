@@ -1,0 +1,965 @@
+{# ==========================================================================
+   衡护 HENGUARD · Jinja2 宏
+   说明：只放展示宏，不做权限判断（权限在路由层）。
+   约定：所有时间字段由后端传 datetime（带时区），本文件用 strftime 格式化。
+   ========================================================================== #}
+
+{# ---------- 图标：Lucide 线性图标内联，20px / 线宽 1.75 ----------
+   例外：logo 是自绘的盾形，坐标画在 32 单位的格子上（实测 path 边界 x 5–27、y 2.5–27.5）。
+   套 24 的 viewBox 会把右边和下边各裁掉 3 个单位——所以它单独用 0 0 32 32。
+   #}
+{% macro icon(name, size=20) -%}
+{%- set _vb = '0 0 32 32' if name == 'logo' else '0 0 24 24' -%}
+{%- set _sw = '2' if name == 'logo' else '1.75' -%}
+<svg class="fg-icon" width="{{ size }}" height="{{ size }}" viewBox="{{ _vb }}" fill="none"
+     stroke="currentColor" stroke-width="{{ _sw }}" stroke-linecap="round" stroke-linejoin="round"
+     aria-hidden="true" focusable="false">
+  {%- if name == 'dashboard' -%}
+    <rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/>
+  {%- elif name == 'bell' -%}
+    <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>
+  {%- elif name == 'history' -%}
+    <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/>
+  {%- elif name == 'settings' -%}
+    <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/>
+  {%- elif name == 'overview' -%}
+    <path d="M3 3v18h18"/><path d="m7 15 4-4 3 3 5-6"/>
+  {%- elif name == 'list' -%}
+    <line x1="8" x2="21" y1="6" y2="6"/><line x1="8" x2="21" y1="12" y2="12"/><line x1="8" x2="21" y1="18" y2="18"/><line x1="3" x2="3.01" y1="6" y2="6"/><line x1="3" x2="3.01" y1="12" y2="12"/><line x1="3" x2="3.01" y1="18" y2="18"/>
+  {%- elif name == 'users' -%}
+    <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+  {%- elif name == 'device' -%}
+    <rect width="16" height="16" x="4" y="4" rx="2"/><rect width="6" height="6" x="9" y="9" rx="1"/><path d="M15 2v2"/><path d="M15 20v2"/><path d="M2 15h2"/><path d="M2 9h2"/><path d="M20 15h2"/><path d="M20 9h2"/><path d="M9 2v2"/><path d="M9 20v2"/>
+  {%- elif name == 'audit' -%}
+    <path d="M8 21h12a2 2 0 0 0 2-2v-2H10v2a2 2 0 1 1-4 0V5a2 2 0 1 0-4 0v3h4"/><path d="M19 17V5a2 2 0 0 0-2-2H4"/><path d="M15 8h-5"/><path d="M15 12h-5"/>
+  {%- elif name == 'search' -%}
+    <circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>
+  {%- elif name == 'logout' -%}
+    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/>
+  {%- elif name == 'refresh' -%}
+    <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/>
+  {%- elif name == 'download' -%}
+    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/>
+  {%- elif name == 'x' -%}
+    <path d="M18 6 6 18"/><path d="m6 6 12 12"/>
+  {%- elif name == 'check' -%}
+    <path d="M20 6 9 17l-5-5"/>
+  {%- elif name == 'clock' -%}
+    <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+  {%- elif name == 'alert' -%}
+    <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><line x1="12" x2="12" y1="9" y2="13"/><line x1="12" x2="12.01" y1="17" y2="17"/>
+  {%- elif name == 'wifi-off' -%}
+    <line x1="2" x2="22" y1="2" y2="22"/><path d="M8.5 16.5a5 5 0 0 1 7 0"/><path d="M2 8.82a15 15 0 0 1 4.17-2.65"/><path d="M10.66 5c4.01-.36 8.14.9 11.34 3.76"/><path d="M16.85 11.25a10 10 0 0 1 2.22 1.68"/><path d="M5 12.55a10 10 0 0 1 5.17-2.39"/><line x1="12" x2="12.01" y1="20" y2="20"/>
+  {%- elif name == 'image' -%}
+    <rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/>
+  {%- elif name == 'camera' -%}
+    {#- 2026-11-04：护士长侧栏「病区画面」用（lucide camera） -#}
+    <path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/>
+  {%- elif name == 'map-pin' -%}
+    <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/>
+  {%- elif name == 'user' -%}
+    <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
+  {%- elif name == 'plus' -%}
+    <path d="M5 12h14"/><path d="M12 5v14"/>
+  {%- elif name == 'key' -%}
+    <circle cx="7.5" cy="15.5" r="5.5"/><path d="m21 2-9.6 9.6"/><path d="m15.5 7.5 3 3L22 7l-3-3"/>
+  {%- elif name == 'power' -%}
+    <path d="M12 2v10"/><path d="M18.4 6.6a9 9 0 1 1-12.77.04"/>
+  {%- elif name == 'eye' -%}
+    <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>
+  {%- elif name == 'volume' -%}
+    <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/>
+  {%- elif name == 'volume-off' -%}
+    <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="22" x2="16" y1="9" y2="15"/><line x1="16" x2="22" y1="9" y2="15"/>
+  {%- elif name == 'shield' -%}
+    <path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/>
+  {%- elif name == 'filter' -%}
+    <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>
+  {%- elif name == 'file' -%}
+    <path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/>
+  {%- elif name == 'inbox' -%}
+    <polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/>
+  {%- elif name == 'menu' -%}
+    <line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="18" y2="18"/>
+  {%- elif name == 'arrow-left' -%}
+    <path d="m12 19-7-7 7-7"/><path d="M19 12H5"/>
+  {%- elif name == 'chevron-left' -%}
+    <path d="m15 18-6-6 6-6"/>
+  {%- elif name == 'chevron-right' -%}
+    <path d="m9 18 6-6-6-6"/>
+  {%- elif name == 'lock' -%}
+    <rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+  {%- elif name == 'calendar' -%}
+    <path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/>
+  {%- elif name == 'activity' -%}
+    <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+  {%- elif name == 'logo' -%}
+    <path d="M16 2.5 27 7.5v7.6c0 6.6-4.6 10.6-11 12.4C9.6 25.7 5 21.7 5 15.1V7.5Z"/><path d="M16 10v10"/><path d="M11 15h10"/>
+  {%- endif -%}
+</svg>
+{%- endmacro %}
+
+{# ---------- 时间与数字格式化 ---------- #}
+{% macro fmt_time(dt, fmt='%H:%M:%S') -%}
+{%- if not dt -%}—{%- elif dt.strftime is defined -%}{{ dt.strftime(fmt) }}{%- else -%}{{ dt }}{%- endif -%}
+{%- endmacro %}
+
+{% macro fmt_date(dt) -%}
+{{ fmt_time(dt, '%Y-%m-%d') }}
+{%- endmacro %}
+
+{% macro fmt_datetime(dt) -%}
+{{ fmt_time(dt, '%m-%d %H:%M') }}
+{%- endmacro %}
+
+{% macro fmt_iso_time(v, fmt='%m-%d %H:%M') -%}
+{#-
+  metrics._devices 返回的 last_event_at 是 ISO **字符串**（那份数据结构要同时喂 JSON 接口），
+  而 main._devices 给的是 datetime。fmt_time 只认 datetime，拿到字符串会原样吐出去，
+  界面上就出现「最后事件 2026-10-30T12:55:41+08:00」。这里把两种输入都收成一个格式。
+-#}
+{%- if not v -%}—
+{%- elif v.strftime is defined -%}{{ v.strftime(fmt) }}
+{%- elif fmt == '%m-%d %H:%M' -%}{{ (v|string)[5:16]|replace('T', ' ') }}
+{%- else -%}{{ (v|string)[11:16] }}
+{%- endif -%}
+{%- endmacro %}
+
+{% macro iso(dt) -%}
+{%- if dt -%}{%- if dt.isoformat is defined -%}{{ dt.isoformat() }}{%- else -%}{{ dt }}{%- endif -%}{%- endif -%}
+{%- endmacro %}
+
+{% macro short_uid(uid) -%}
+{%- if uid -%}{{ (uid|string)[:8] }}…{%- else -%}—{%- endif -%}
+{%- endmacro %}
+
+{% macro event_ref(uid) -%}
+{#-
+  台账专用事件号：8 位可搜索前缀 + 末 4 位消歧义。
+  前缀必须留着——搜索框是按前缀匹配的（routes/events.py 的 event_uid::text LIKE）。
+  但只有前缀认不出行：31 条里 8 位前缀重复到只剩 17 个不同值。
+-#}
+{%- if uid -%}{{ (uid|string)[:8] }}-{{ (uid|string)[-4:] }}{%- else -%}—{%- endif -%}
+{%- endmacro %}
+
+{% macro model_ver(v) -%}
+{%- if v is none -%}—{%- else -%}{{ '%08X'|format(v) }}{%- endif -%}
+{%- endmacro %}
+
+{% macro prob_text(p) -%}
+{%- if p is none -%}—{%- else -%}{{ '%.2f'|format(p) }}（未校准）{%- endif -%}
+{%- endmacro %}
+
+{% macro ratio_text(v) -%}
+{%- if v is none -%}—{%- else -%}{{ '%.2f'|format(v) }}{%- endif -%}
+{%- endmacro %}
+
+{% macro duration_text(seconds) -%}
+{%- if seconds is none -%}—
+{%- elif seconds < 60 -%}{{ seconds }}秒
+{%- elif seconds < 3600 -%}{{ (seconds // 60) }}分{{ (seconds % 60) }}秒
+{%- else -%}{{ (seconds // 3600) }}小时{{ ((seconds % 3600) // 60) }}分
+{%- endif -%}
+{%- endmacro %}
+
+{# ---------- 审计枚举 → 中文 ----------
+   audit_log.action / actor_role / result 存的是原始枚举。审计页和事件详情的证据链
+   都直接把它们印出来，于是同一件事在左栏叫「重开」、右栏叫 REOPEN。
+   字典放在这里，两个模板共用一份，改名只改一处。
+   2026-11-07 补 USER_ZONE_SET：它从 P12 起就在写，一直没进这张表，审计页显原始枚举。
+  2026-11-07（审计页重排）再补 LOGIN_FAIL / CONFIG_APPLY / CONFIG_APPLY_FAIL / EXPORT：
+  这四个同样在写、同样没进表。⚠️ 审计页的**筛选下拉就是本表生成的** ⇒ 漏一个不只是
+  「显示成英文」，而是**这个动作根本筛不到**（现网 33 条）。往库里加新 action 时必须回来补。 #}
+{% set AUDIT_ACTIONS = {
+  'LOGIN': '登录', 'LOGOUT': '退出登录', 'INGEST': '设备入库',
+  'ACK': '接警', 'ARRIVE': '到场', 'RESOLVE': '完成处置',
+  'FALSE_ALARM': '标记误报', 'CLOSE': '归档', 'REOPEN': '重开',
+  'SNAPSHOT_VIEW': '查看快照', 'CLIP_VIEW': '查看片段',
+  'USER_CREATE': '建号', 'USER_UPDATE': '账号变更',
+  'USER_ENABLE': '启用账号', 'USER_DISABLE': '停用账号', 'USER_RESET': '重置账号密码',
+  'USER_ZONE_SET': '调整负责区域',
+  'PASSWORD_RESET': '重置密码', 'PASSWORD_CHANGE': '修改密码',
+  'DEVICE_CREATE': '新增设备', 'DEVICE_UPDATE': '修改设备',
+  'DEVICE_ENABLE': '启用设备', 'DEVICE_DISABLE': '停用设备',
+  'DEVICE_FOLLOW_STREAM': '设备随流迁移',
+  'ZONE_CREATE': '新增区域', 'ZONE_UPDATE': '修改区域',
+  'POINT_CREATE': '新增点位', 'POINT_UPDATE': '修改点位',
+  'WARD_CREATE': '新增病区', 'WARD_UPDATE': '修改病区',
+  'CONFIG_SAVE': '下发判定策略', 'CONFIG_ROLLBACK': '回滚判定策略',
+  'CONFIG_APPLY': '策略下发生效', 'CONFIG_APPLY_FAIL': '策略下发失败',
+  'LOGIN_FAIL': '登录失败', 'EXPORT': '导出数据',
+  'DENIED': '越权拦截'
+} %}
+
+{% set AUDIT_ROLES = {'nurse': '值班护士', 'head_nurse': '护士长',
+                      'admin': '信息科管理员', 'system': '系统'} %}
+
+{% macro audit_action(code) -%}
+{{- AUDIT_ACTIONS.get(code, code or '—') -}}
+{%- endmacro %}
+
+{% macro audit_role(code) -%}
+{{- AUDIT_ROLES.get(code, code or '—') -}}
+{%- endmacro %}
+
+{% macro audit_result(code) -%}
+{{- {'OK': '成功', 'DENIED': '拒绝', 'FAIL': '失败'}.get(code, code or '—') -}}
+{%- endmacro %}
+
+{#- 结果标签。表格与抽屉标题共用。
+    原来表格里手写了三个 if 分支（同一套 class 抄三遍），抽屉标题又只印纯文本 ⇒
+    「拒绝」在抽屉里跟「成功」长得一样，而越权拦截恰恰是审计最该一眼看见的那种行。 -#}
+{% macro audit_result_tag(code) -%}
+{%- set cls = {'OK': 'fg-tag--resolved', 'DENIED': 'fg-tag--false'}.get(code, 'fg-tag--pending') -%}
+<span class="fg-tag {{ cls }}"><span class="fg-tag__mark"></span>{{ audit_result(code) }}</span>
+{%- endmacro %}
+
+{#- 处置态中文名。**唯一一份**：disposition_tag（全站标签）与审计 detail 渲染都取这里。
+    以前 disposition_tag 自己内联了一份，审计页要用就得抄第二份 ⇒ 同一个状态两个名字。 -#}
+{% set DISPOSITION_LABELS = {
+  'PENDING': '待接警', 'ACKED': '已接警', 'ON_SCENE': '已到场',
+  'RESOLVED': '已处置', 'FALSE_ALARM': '误报', 'CLOSED': '已归档'
+} %}
+
+{#- 处置结果（event_action.outcome）中文名，取值见 routes/events.py::VALID_OUTCOME。
+    2026-11-07 从 event_detail.html 提上来：审计 detail 也要用它，两处各留一份必然漂。
+    ⚠️ event_detail.html 里的**表单选项**也从这里取，别只改展示不改表单。 -#}
+{% set OUTCOME_LABELS = {
+  'ASSISTED': '已搀扶协助', 'NO_ABNORMALITY': '到场无异常', 'MEDICAL': '需医生处理',
+  'HOSPITALIZED': '已送医', 'OTHER': '其他'
+} %}
+
+{#- 级别（severity_of 只产出 S1/S2/S3）。sev_tag 只管配色，名字从这来。 -#}
+{% set SEVERITY_LABELS = {'S1': 'S1 紧急', 'S2': 'S2 重要', 'S3': 'S3 提示'} %}
+
+{#- 检测态（audit detail 的 `state` 键）。**两种入参**：事件台账里是 'CONFIRMED'/'RETRACTED'，
+    INGEST 审计里是网关原始整数 —— ingest.py:152 `_req_int(ev, "state")`，1=确认 2=撤回。
+    少了 1/2 这两组，抽屉里就印成「检测态 2」这种原始值（真数据截图抓到的）。
+    这里只有两个字面名；detection_tag 那套「曾确认 · 已撤回 / 模型已撤回」要看 ever 才分得出来，
+    是另一回事，**不合并**——合并会把「告警确实发生过」这层意思丢掉。 -#}
+{% set DETECTION_LABELS = {'CONFIRMED': '已确认', 'RETRACTED': '已撤回',
+                           '1': '已确认', '2': '已撤回'} %}
+
+{% macro disposition_name(state) -%}
+{{- DISPOSITION_LABELS.get(state, state or '—') -}}
+{%- endmacro %}
+
+{# ---------- 审计 detail 渲染 ----------
+   audit_log.detail 是 JSONB，**每种 action 的形状都不一样**。
+   这里把它翻成「键 → 人话」的键值块。两处复用：/admin/audit 的抽屉、事件详情的证据链
+   （后者原来是把 detail 用 |tojson 原样倒出来）。
+
+   ⚠️ 库里的键以后还会加（INGEST 已经 15 个）⇒ **没登记的键必须原样兜底**。
+      不能因为冒出新键就整块空白 —— 那会把「这条审计什么都没记」变成假象。
+   ⚠️ `changed` 的值是 **`[旧值, 新值]` 两元素列表**，不是 `{from, to}`（admin.py:355-423、1850-1855）。
+   ⚠️ `removed_zones` / `added` / `removed` / `zone_ids` 存的是**区域的 UUID 字符串**，
+      detail 里**没有区域名** ⇒ 调用方必须把 zone_names（uuid → 名）传进来才能显出人话。
+      （USER_UPDATE 的**响应**里有 removed_zone_names，**审计里没有**，别指望它。）
+-#}
+{% set DETAIL_KEYS = {
+  'login_name': '登录名', 'display_name': '姓名', 'os_user': '系统账号', 'via': '方式',
+  'user_id': '账号 ID',
+  'device_code': '设备码', 'device_name': '设备名', 'point_id': '点位',
+  'from_point': '原点位', 'to_point': '新点位', 'stream_path': '流路径',
+  'ward_id': '病区', 'from_ward': '原病区', 'to_ward': '新病区', 'ward_name': '病区',
+  'floor': '楼层', 'zone_id': '区域', 'name': '名称', 'light_key': '门灯键',
+  'role': '角色', 'is_active': '账号状态',
+  'reason': '原因', 'note': '备注', 'outcome': '处置结果', 'method': '请求方法',
+  'rev': '策略版本', 'status': '下发结果', 'error': '错误信息',
+  'prob_fall': '跌倒概率', 'coverage': '窗口覆盖率', 'severity': '级别',
+  'model_ver': '模型版本', 'window_start': '窗口起始帧', 'person_id': '目标编号',
+  'board_seq': '设备序号', 'matched': '匹配到事件', 'matched_by': '匹配依据',
+  'duplicate': '重复推送', 'orphan_retract': '孤儿撤回', 'state': '检测态',
+  'rows': '导出行数', 'filters': '导出条件',
+  'required_roles': '需要角色', 'actual_role': '实际角色',
+  'failed_count': '连续失败', 'locked_until': '锁定至', 'fields': '涉及字段'
+} %}
+
+{% macro audit_detail_value(key, val, zone_names=none, ward_names=none) -%}
+{%- if val is none -%}—
+{%- elif key in ('role', 'actual_role') -%}{{ AUDIT_ROLES.get(val|string, val) }}
+{%- elif key in ('from_state', 'to_state') -%}{{ DISPOSITION_LABELS.get(val|string, val) }}
+{%- elif key == 'state' -%}{{ DISPOSITION_LABELS.get(val|string, DETECTION_LABELS.get(val|string, val)) }}
+{%- elif key == 'outcome' -%}{{ OUTCOME_LABELS.get(val|string, val) }}
+{%- elif key == 'severity' -%}{{ SEVERITY_LABELS.get(val|string, val) }}
+{%- elif key == 'status' -%}{{ {'APPLIED': '已生效', 'FAILED': '失败'}.get(val|string, val) }}
+{%- elif key == 'ward_id' -%}{{ (ward_names or {}).get(val|string) or val }}
+{%- elif key == 'zone_id' -%}{{ (zone_names or {}).get(val|string) or val }}
+{%- elif key == 'is_active' -%}{{ '启用' if val else '停用' }}
+{%- elif key == 'model_ver' -%}{{ model_ver(val) }}
+{%- elif key == 'prob_fall' -%}{{ '%.2f'|format(val|float) }}
+{%- elif key == 'coverage' -%}{{ '%.0f%%'|format((val|float) * 100) }}
+{%- elif key == 'locked_until' -%}{{ fmt_iso_time(val, '%m-%d %H:%M') }}
+{#- ⚠️ window_start 是**帧号**不是时间（P8 契约：`uint32_t window_start; /* 窗口起始帧号 */`，
+    现网真值 6720 / 6340）。原来跟 locked_until 共用 fmt_iso_time ⇒ 整数被当成 ISO 字符串
+    切 `[5:16]`，4 位数字直接切成空串 ⇒ 抽屉里「窗口起点」后面一片空白（真数据截图抓到的）。 -#}
+{%- elif key == 'window_start' -%}{{ val }}
+{%- elif key == 'matched_by' -%}{{ {'board_seq': '设备序号精确匹配',
+                                    'fuzzy': '按目标与窗口匹配'}.get(val|string, val) }}
+{%- elif key in ('matched', 'duplicate', 'orphan_retract') -%}{{ '是' if val else '否' }}
+{#- ⚠️ 复合值必须自己收干净：`{{ {'a':1} }}` 会把 Python 的 repr 直接印到页面上
+    （`{'ward': '4F-A'}`），那是没渲染过的内部形状。 -#}
+{%- elif val is mapping -%}{{ val.items() | map('join', '=') | join('、') }}
+{%- elif val is sequence and val is not string -%}{{ val | join('、') }}
+{%- else -%}{{ val }}
+{%- endif -%}
+{%- endmacro %}
+
+{#- 区域 UUID 列表 → 「4F-A 东走廊、4F-A 西走廊」。认不出的 id 退成短前缀而不是空白。 -#}
+{% macro audit_zone_list(ids, zone_names=none) -%}
+{%- set ns = namespace(names=[]) -%}
+{%- for z in (ids or []) -%}
+  {%- set nm = (zone_names or {}).get(z|string) -%}
+  {%- set ns.names = ns.names + [nm or ((z|string)[:8] ~ '…')] -%}
+{%- endfor -%}
+{{- ns.names | join('、') if ns.names else '—' -}}
+{%- endmacro %}
+
+{% macro audit_detail(detail, zone_names=none, ward_names=none, columns=2, drop=none) -%}
+{%- set d = detail if detail is mapping else {} -%}
+{#- 2 列是抽屉里的默认；证据链那条 aside 只有 1/3 宽，传 columns=1。 -#}
+{%- set gcls = 'fg-detail__grid' ~ (' fg-detail__grid--1' if columns == 1 else '') -%}
+{%- set changed = d.get('changed') if d.get('changed') is mapping else {} -%}
+{#- 已单独渲染的键：剩下的才走通用表。#}
+{%- set consumed = ['changed', 'from_state', 'to_state', 'required_roles', 'actual_role',
+                    'method', 'outcome', 'removed_zones', 'added', 'removed', 'zone_ids',
+                    'client_request_id'] -%}
+{#- 有 changed 时 fields（改动的字段名数组）就是冗余的，不再单列。#}
+{%- if changed %}{% set consumed = consumed + ['fields'] %}{% endif -%}
+{#- drop = 调用方说「这几个键抽屉抬头已经写过了，别再印一遍」。
+    目前只有 login_name：账号类记录的抬头就是「张伟（zhangw）」，正文再列一次「登录名 zhangw」
+    纯属重复。**是去重不是隐藏** —— 抬头没写出来的场合调用方就不会传它（见 admin_audit.html）。 -#}
+{%- if drop %}{% set consumed = consumed + (drop | list) %}{% endif -%}
+{#- 先按业务顺序排已知键，未知键排在后面按字典序 —— jsonb 不保序，不排每次刷新顺序都会变。
+    ⚠️ consumed 要在**两段都**滤掉：只滤第二段的话，已单独渲染的键会因为「在 DETAIL_KEYS 里」
+       又从第一段漏回来（fields 就这么漏过一次）。 -#}
+{%- set dkeys = d.keys() | list -%}
+{%- set dknown = DETAIL_KEYS.keys() | list -%}
+{%- set ordered = (dknown | select('in', dkeys) | reject('in', consumed) | list)
+                  + (dkeys | reject('in', dknown) | reject('in', consumed) | sort | list) -%}
+
+{%- if not d -%}
+<p class="fg-empty-inline">这条记录没有附带详情。</p>
+{%- else -%}
+<div class="fg-detail">
+  {#- ① 改了什么：字段 → 旧 → 新 -#}
+  {%- if changed -%}
+  <div class="fg-detail__section">
+    <div class="fg-detail__title">改了什么</div>
+    <div class="{{ gcls }}">
+      {%- for k, v in changed.items() -%}
+      {%- set is_pair = v is sequence and v is not string and v is not mapping and v|length == 2 -%}
+      <div>
+        <span class="fg-detail__k">{{ DETAIL_KEYS.get(k, k) }}</span>
+        <span class="fg-detail__v">
+          {%- if is_pair -%}
+          {{ audit_detail_value(k, v[0], zone_names, ward_names) }}
+          <span class="fg-muted" aria-hidden="true">→</span>
+          {{ audit_detail_value(k, v[1], zone_names, ward_names) }}
+          {%- else -%}
+          {{ audit_detail_value(k, v, zone_names, ward_names) }}
+          {%- endif -%}
+        </span>
+      </div>
+      {%- endfor -%}
+    </div>
+  </div>
+  {%- endif -%}
+
+  {#- ② 处置状态流转 -#}
+  {%- if d.get('from_state') or d.get('to_state') -%}
+  <div class="fg-detail__section">
+    <div class="{{ gcls }}">
+      <div>
+        <span class="fg-detail__k">处置状态</span>
+        <span class="fg-detail__v">
+          {{ audit_detail_value('from_state', d.get('from_state')) }}
+          <span class="fg-muted" aria-hidden="true">→</span>
+          {{ audit_detail_value('to_state', d.get('to_state')) }}
+        </span>
+      </div>
+      {%- if d.get('outcome') %}
+      <div>
+        <span class="fg-detail__k">处置结果</span>
+        <span class="fg-detail__v">{{ audit_detail_value('outcome', d.get('outcome')) }}</span>
+      </div>
+      {%- endif %}
+    </div>
+  </div>
+  {%- endif -%}
+
+  {#- ③ 越权：需要什么角色、实际是什么 -#}
+  {%- if d.get('required_roles') or d.get('actual_role') -%}
+  <div class="fg-detail__section">
+    <div class="fg-detail__title">权限</div>
+    <div class="{{ gcls }}">
+      <div>
+        <span class="fg-detail__k">需要角色</span>
+        <span class="fg-detail__v">
+          {#- ⚠️ audit_role 是**宏**不是过滤器，`| map('audit_role')` 会炸（No filter named）。 -#}
+          {%- set ns_r = namespace(names=[]) -%}
+          {%- for r in (d.get('required_roles') or []) -%}
+          {%- set ns_r.names = ns_r.names + [AUDIT_ROLES.get(r|string, r)] -%}
+          {%- endfor -%}
+          {{ ns_r.names | join('或') if ns_r.names else '—' }}
+        </span>
+      </div>
+      <div>
+        <span class="fg-detail__k">实际角色</span>
+        <span class="fg-detail__v">{{ audit_detail_value('actual_role', d.get('actual_role')) }}</span>
+      </div>
+      {%- if d.get('method') %}
+      <div>
+        <span class="fg-detail__k">请求方法</span>
+        <span class="fg-detail__v fg-detail__v--mono">{{ d['method'] }}</span>
+      </div>
+      {%- endif %}
+    </div>
+  </div>
+  {%- endif -%}
+
+  {#- ④ 负责区域的增删
+      ⚠️ 有 added/removed 时**不印 zone_ids**：它记的是最终全集，跟增删两行并排就是同一件事说两遍
+        （USER_ZONE_SET 三条都写，页面上会重复）。 -#}
+  {%- set zsec = [('added', '新增负责区域'), ('removed', '移除负责区域'),
+                  ('removed_zones', '一并撤掉的负责区域'), ('zone_ids', '目前负责区域')] -%}
+  {%- if d.get('added') or d.get('removed') -%}
+  {%- set zsec = zsec | selectattr('0', 'ne', 'zone_ids') | list -%}
+  {%- endif -%}
+  {%- set zshown = zsec | selectattr('0', 'in', dkeys) | list -%}
+  {%- if zshown -%}
+  <div class="fg-detail__section">
+    {#- 这里**不加标题**：四个标签本身已经说明是什么（「一并撤掉的负责区域」），
+        再加一个「负责区域」的组标题就是同一句话说两遍。 -#}
+    <div class="{{ gcls }}">
+      {%- for key, label in zshown -%}
+      {%- if d.get(key) -%}
+      <div>
+        <span class="fg-detail__k">{{ label }}</span>
+        <span class="fg-detail__v">{{ audit_zone_list(d.get(key), zone_names) }}</span>
+      </div>
+      {%- endif -%}
+      {%- endfor -%}
+    </div>
+  </div>
+  {%- endif -%}
+
+  {#- ⑤ 其余键：已知的按业务顺序，未知的原样兜底（consumed 已在 ordered 里滤过） -#}
+  {%- set rest = ordered -%}
+  {%- set has_above = changed or zshown or d.get('from_state') or d.get('to_state')
+                       or d.get('required_roles') or d.get('actual_role') -%}
+  {%- if rest -%}
+  <div class="fg-detail__section">
+    {%- if has_above %}<div class="fg-detail__title">其他</div>{%- endif %}
+    <div class="{{ gcls }}">
+      {%- for k in rest -%}
+      {%- if d.get(k) is not none and d.get(k) != '' -%}
+      <div>
+        <span class="fg-detail__k">{{ DETAIL_KEYS.get(k, k) }}</span>
+        <span class="fg-detail__v{% if k in ('model_ver', 'window_start', 'locked_until',
+                                              'point_id', 'zone_id', 'board_seq') %} fg-detail__v--mono{% endif %}">{{
+          audit_detail_value(k, d.get(k), zone_names, ward_names) }}</span>
+      </div>
+      {%- endif -%}
+      {%- endfor -%}
+    </div>
+  </div>
+  {%- endif -%}
+
+  {#- ⑥ 技术字段：幂等请求号只有排障才看，不跟业务字段抢注意力 -#}
+  {%- if d.get('client_request_id') %}
+  <details class="fg-details">
+    <summary class="fg-details__summary">技术信息</summary>
+    <div class="fg-details__body">
+      <div class="{{ gcls }}">
+        <div>
+          <span class="fg-detail__k">幂等请求号</span>
+          <span class="fg-detail__v fg-detail__v--mono">{{ d['client_request_id'] }}</span>
+        </div>
+      </div>
+    </div>
+  </details>
+  {%- endif %}
+</div>
+{%- endif -%}
+{%- endmacro %}
+
+{# ---------- 门灯 ---------- #}
+{% macro doorlight(device, pending_n=0, point_link=false) -%}
+{#-
+  病区走廊上的呼叫灯，一台设备一盏：
+    方灯 = 点位安静 · 圆灯 = 有人在等 · 灰灯 = 离线。
+  pending_n 来自 metrics.pending_by_location（**全量**聚合），
+  不是待处置队列——队列有 LIMIT，会漏掉后面的点位。
+-#}
+{%- set loc = device.live_light_key or device.live_point_name or device.device_name or device.device_code -%}
+{%- set offline = device.is_active is defined and not device.is_active -%}
+{#-
+  2026-11-02：点门灯默认还是「按这台设备看告警」（设备页/总览页保持原样）。
+  只有值班工作台传 point_link=true，改成进该点位的画面页——那里才有摄像头可看。
+  2026-11-05 七改：位置只有一个来源 = **绑定了这台设备的点位**（live_point_id）。
+  设备行上已无安装点位 → 没有绑定就没有位置，灯上显示设备名/设备码。
+-#}
+{%- set _pid = device.live_point_id -%}
+{%- set _href = ('/nurse/camera/' ~ _pid)
+                 if (point_link and _pid)
+                 else ('/alerts?device=' ~ device.device_code) -%}
+<a class="fg-doorlight {% if offline %}is-offline{% elif pending_n %}is-alert{% else %}is-idle{% endif %}"
+   href="{{ _href }}"
+   title="{{ loc }} · {{ '离线' if offline else (pending_n|string ~ ' 条待处置' if pending_n else '正常') }}">
+  <span class="fg-doorlight__lamp" aria-hidden="true"></span>
+  <span class="fg-doorlight__txt">
+    <span class="fg-doorlight__loc">{{ loc }}</span>
+    <span class="fg-doorlight__meta">
+      {%- if offline -%}离线
+      {%- elif pending_n -%}{{ pending_n }} 条待处置
+      {%- elif device.last_event_at -%}最后 {{ fmt_iso_time(device.last_event_at, '%H:%M') }}
+      {%- else -%}安静
+      {%- endif -%}
+    </span>
+  </span>
+</a>
+{%- endmacro %}
+
+{% macro doorbar(devices, pending_by_location=none, point_link=false) -%}
+{%- set pl = pending_by_location if pending_by_location is not none else {} -%}
+<div class="fg-doorbar">
+  {%- for device in devices %}
+  {{ doorlight(device, pl.get(device.live_light_key or device.device_code, 0), point_link=point_link) }}
+  {%- endfor %}
+</div>
+{%- endmacro %}
+
+{% macro point_qs(points) -%}
+{#-
+  把点位列表拼成 `&point=A&point=B`（重复参数 = 多值；逗号拼串会被
+  「点位名里本来就有逗号」破功，light_key 是自由文本）。
+  没筛就返回空串 —— 调用方直接 `'?disposition=' ~ seg ~ point_qs(pts)`。
+-#}
+{%- set ns = namespace(s='') -%}
+{%- for k in points -%}{% set ns.s = ns.s ~ '&point=' ~ (k|urlencode) %}{%- endfor -%}
+{{- ns.s -}}
+{%- endmacro %}
+
+
+{% macro pointlight(p, cur_seg='PENDING', cur_points=none) -%}
+{#-
+  值班工作台的状态灯，**一盏一个点位**（2026-11-02）。
+  和 doorlight 长得一模一样，因为它们在同一条带子里，混两种造型会散。
+  区别只在数据源与第四种状态：
+
+    is-alert        有人在等（优先，不能被下面的状态盖掉）
+    is-offline      点位已停用 / 设备离线
+    is-unconfigured 没配摄像头 → 红灯。这是这次新加的：让人一眼看出「这里还没接」
+    is-idle         正常
+
+  优先级：告警 > 停用 > 未配置 > 离线 > 正常。
+    · 告警必须赢：值班时先看「谁在等」，配置问题不能把红色抢走；
+      但「未配置」这条事实不会消失 —— 它自起一行，见下面。
+    · 「停用」赢过「未配置」：停用的点位本来就不该有画面，标红等于催人去配。
+
+  2026-11-03 用户：「未配置这三个字最好另起一行显示」。
+    原来有告警时它是塞在状态尾巴里的（「3 条待处置 · 未配置」），读起来像状态的
+    一部分；现在**「未配置」永远自成一行红字**（`__flag`），状态行只留状态。
+    没告警时那盏灯就只有「未配置」一行 —— 一行也走同一个 `__flag`，
+    所以两种情形长得一样，不必记两套。文案收成三个字，完整说法在 title 里。
+
+  2026-11-03 用户追加：「已配置的点位可以加上已配置」。于是这一行对**所有**未停用点位
+    都出：有摄像头写「已配置」（灰，平静事实），没摄像头写「未配置」（红，待办事项）。
+    好处是不用靠「这里没写红字」去反推配置状态。
+    ⚠️ 「已配置」只代表 `stream_path` 填了地址，**不代表画面通了**；别让它冒充在线状态。
+    ⚠️ `__flag` 的颜色不能跟着 `.is-alert` 走：告警态会把 `__meta` 染成待处置色，
+    这条红字必须常驻，否则「没配摄像头」在告警时又消失一次。
+
+  2026-11-03 用户要的「灯角小按钮」：
+    灯本体仍然进点位画面页；右上角多一个 22px 漏斗钮 = 「队列只看这个点位」，
+    再点一次从这个**集合**里摘掉它（多个点位可同时选中）。
+  ⚠️ 两个可点目标不能嵌套（`<a>` 里放 `<a>` 不合法、点了也分不清是谁的），
+    所以外面套一层 `.fg-pointcell` 定位，按钮绝对定位压在灯的角上。
+  筛选钮也是**链接**不是按钮：URL 才是状态源，能新开标签、能在无 JS 时工作，
+    还能被 app.js 的 `[data-workspace-open]` 接管成原地刷新。
+
+  `cur_points` 是一个**列表**（多选状态）。每个钮的 href = 当前集合
+  「加/减自己」之后的结果 —— 点一下是集合运算，不是开关单个参数。
+-#}
+{%- set _inactive = (p.point_active is defined and p.point_active is not none and not p.point_active) -%}
+{%- set _dev_off = (p.device_active is not none and not p.device_active) -%}
+{#- 停用的点位不报配置状态：它本来就不该有画面（与灯色优先级同一条理由）。 -#}
+{%- set _unconf = (not p.stream_path) and (not _inactive) -%}
+{#- 2026-11-03 用户：「已配置的点位可以加上已配置」——和「未配置」对称，
+    每种点位都把自己的摄像头状态说出来，不用靠「没写红字」去反推。
+    ⚠️ 只认 `stream_path`（= 管理员填了地址），**不等于画面已经通了**：
+       「配了但没人推」是另一回事，那条要看点位页；这里不敢替它打包票。 -#}
+{%- set _conf = (not _unconf) and (not _inactive) -%}
+{%- if p.pending -%}{%- set _cls = 'is-alert' -%}
+{%- elif _inactive -%}{%- set _cls = 'is-offline' -%}
+{%- elif not p.stream_path -%}{%- set _cls = 'is-unconfigured' -%}
+{%- elif _dev_off -%}{%- set _cls = 'is-offline' -%}
+{%- else -%}{%- set _cls = 'is-idle' -%}
+{%- endif -%}
+{%- if p.pending -%}
+  {#- 有告警在等时，灯的**颜色**必须让给告警（值班先看谁在等）；
+      「未配置」这条配置缺陷不能因此消失，但它不再挤在这一行（见 _flag）。 -#}
+  {%- set _meta = p.pending|string ~ ' 条待处置' -%}
+{%- elif _inactive -%}{%- set _meta = '已停用' -%}
+{%- elif _unconf -%}{%- set _meta = '' -%}
+{%- elif _dev_off -%}{%- set _meta = '离线' -%}
+{%- elif p.last_event_at -%}{%- set _meta = '最后 ' ~ fmt_iso_time(p.last_event_at, '%H:%M') -%}
+{%- else -%}{%- set _meta = '安静' -%}
+{%- endif -%}
+{#- 空状态行不渲染：`_meta` 为空串时下面连 `<span>` 都不出，否则会多一条空行。 -#}
+{#- 两种情形共用一个槽位：未配置（红）/ 已配置（灰），永远不与状态行混排。 -#}
+{%- set _flag = '未配置' if _unconf else ('已配置' if _conf else none) -%}
+{%- set _title = p.name ~ ' · ' ~ (_meta if _meta else '未配置摄像头') -%}
+{#- ⚠️ 2026-11-08 更正：这里原来写的是 `_flag`，而 `_flag` 对**已配置**的点位也非空
+    （值是 '已配置'）⇒ 只要这一点位有告警数或最后事件时间，title 就拼成
+    「X · 3 条待处置 · 未配置摄像头」—— **配好了也照喊「未配置摄像头」**。
+    要判断的只有 `_unconf` 这一件事。这个错在 512病房 配好之前一直被
+    「反正它就是没配」掩盖着，设备一绑上就露出来了。 -#}
+{%- if _unconf and _meta -%}{%- set _title = _title ~ ' · 未配置摄像头' -%}{%- endif -%}
+{%- set _pts = cur_points if cur_points is not none else [] -%}
+{%- set _on = (p.light_key in _pts) -%}
+{#- 集合运算：已选则去掉自己，未选则加上自己（保持点击顺序，URL 可读） -#}
+{%- if _on -%}
+  {%- set _next = _pts | reject('equalto', p.light_key) | list -%}
+{%- else -%}
+  {%- set _next = _pts + [p.light_key] -%}
+{%- endif -%}
+{%- set _href = '?disposition=' ~ cur_seg ~ point_qs(_next) -%}
+{#- 多选时「取消只看 X」会歧义（还有别的点位在筛）：说清是「从筛选里去掉这一个」。
+    （先赋值再插值：Jinja 的行内 if 和 `~` 混在一行里优先级不好读。） -#}
+{%- if _on -%}
+  {%- set _alabel = '取消点位筛选' if _pts|length == 1
+                    else '从点位筛选里去掉「' ~ p.name ~ '」' -%}
+  {%- set _atitle = '从筛选里去掉' -%}
+{%- else -%}
+  {%- set _alabel = '只看「' ~ p.name ~ '」的告警' -%}
+  {%- set _atitle = '加进筛选' -%}
+{%- endif -%}
+<div class="fg-pointcell{% if _on %} is-filtered{% endif %}">
+  <a class="fg-doorlight {{ _cls }}"
+     href="/nurse/camera/{{ p.point_id }}"
+     title="{{ _title }}">
+    <span class="fg-doorlight__lamp" aria-hidden="true"></span>
+    <span class="fg-doorlight__txt">
+      <span class="fg-doorlight__loc">{{ p.name }}</span>
+      {%- if _meta %}
+      <span class="fg-doorlight__meta">{{ _meta }}</span>
+      {%- endif %}
+      {%- if _flag %}
+      <span class="fg-doorlight__flag{% if _unconf %} is-missing{% else %} is-ok{% endif %}">{{ _flag }}</span>
+      {%- endif %}
+    </span>
+  </a>
+  <a class="fg-pointcell__filter{% if _on %} is-active{% endif %}"
+     id="point-filter-{{ p.point_id }}"
+     href="{{ _href }}"
+     data-workspace-open
+     aria-label="{{ _alabel }}"
+     {% if _on %}aria-current="true"{% endif %}
+     title="{{ _atitle }}">
+    {{ icon('filter', 14) }}
+  </a>
+</div>
+{%- endmacro %}
+
+{# ---------- 状态标签 ---------- #}
+{% macro sev_tag(sev) -%}
+{#- 名字取自 SEVERITY_LABELS（审计 detail 渲染也用），本宏只管配色。 -#}
+{%- set color = {'S1': 'fg-tag--s1', 'S2': 'fg-tag--s2', 'S3': 'fg-tag--s3'} -%}
+{%- set item = (color.get(sev, 'fg-tag--s3'), SEVERITY_LABELS.get(sev, 'S3 提示')) -%}
+<span class="fg-tag {{ item[0] }}"><span class="fg-tag__mark"></span>{{ item[1] }}</span>
+{%- endmacro %}
+
+{% macro detection_tag(state, ever=none) -%}
+{#-
+  state：此刻的检测态（CONFIRMED / RETRACTED）
+  ever ：曾经确认过吗（v_event_fact.ever_confirmed）。不传则退回旧口径：
+         CONFIRMED 视为曾确认，RETRACTED 视为没有。
+  两者分开显示，是为了让「确认后被撤回的真实跌倒」不被读成「不是摔倒」。
+-#}
+{%- if ever is none and state == 'CONFIRMED' -%}{%- set ever = true -%}{%- endif -%}
+{%- if state == 'RETRACTED' -%}
+{%- if ever -%}
+<span class="fg-tag fg-tag--retracted" title="当时已确认并发出过告警，之后模型撤回了判定（通常是已起身）。这次告警仍计入告警数。"><span class="fg-tag__mark"></span>曾确认 · 已撤回</span>
+{%- else -%}
+<span class="fg-tag fg-tag--retracted" title="撤回先于确认到达，从未匹配到确认记录，因此不计入告警数。"><span class="fg-tag__mark"></span>模型已撤回</span>
+{%- endif -%}
+{%- else -%}
+<span class="fg-tag fg-tag--confirmed"><span class="fg-tag__mark"></span>已确认</span>
+{%- endif -%}
+{%- endmacro %}
+
+{% macro disposition_tag(state) -%}
+{#-
+  词表：「待处置」是全站对**未闭环三态**（PENDING+ACKED+ON_SCENE）的总称，
+  用在 KPI、队列标题、导航徽标上。单个状态的 PENDING 必须另有名字，
+  否则「待处置 30」和每行的「待处置」指两个集合，护士会以为积压只有 5 条。
+  ⚠️ 中文名取模块级的 DISPOSITION_LABELS（审计 detail 渲染也用它）——
+     以前这里内联了一份，两处各写各的就是同一个状态两个名字。
+     本宏只管**配色**，名字一律从那份词表来。
+-#}
+{%- set color = {
+  'PENDING': 'fg-tag--pending',
+  'ACKED': 'fg-tag--ack',
+  'ON_SCENE': 'fg-tag--scene',
+  'RESOLVED': 'fg-tag--resolved',
+  'FALSE_ALARM': 'fg-tag--false',
+  'CLOSED': 'fg-tag--closed'
+} -%}
+{%- set item = (color.get(state, 'fg-tag--closed'), DISPOSITION_LABELS.get(state, '—')) -%}
+<span class="fg-tag {{ item[0] }}"><span class="fg-tag__mark"></span>{{ item[1] }}</span>
+{%- endmacro %}
+
+{% macro dual_state(event) -%}
+<div class="fg-dual">
+  <div class="fg-dual__item">
+    <span class="fg-dual__k">检测态</span>
+    {{ detection_tag(event.detection_state, event.ever_confirmed) }}
+  </div>
+  <div class="fg-dual__item">
+    <span class="fg-dual__k">处置态</span>
+    {{ disposition_tag(event.disposition_state) }}
+  </div>
+</div>
+{%- endmacro %}
+
+{# ---------- 详情处置按钮（抽屉 / 工作台工作区共用） ----------
+   2026-11-02 从 event_detail.html 里提出来：工作台把按钮钉在工作区底部（不随长内容滚走），
+   抽屉里还在详情正文里。两处必须长得一模一样，否则同一个事件在两个地方给不同的动作。
+   ⚠️ 角色边界：护士只能 ACK/ARRIVE/RESOLVE/FALSE_ALARM，护士长只能 REOPEN（routes/events.py §3.5）。 #}
+{% macro detail_actions(event, role='nurse') -%}
+{%- set state = event.disposition_state -%}
+{%- set uid = event.event_uid -%}
+{%- set rev = event.revision if event.revision is not none else 0 -%}
+{%- if role == 'nurse' -%}
+  {%- if state == 'PENDING' -%}
+  <button type="button" class="fg-btn fg-btn--primary"
+          data-action="ACK" data-event-uid="{{ uid }}" data-revision="{{ rev }}">接警</button>
+  <button type="button" class="fg-btn fg-btn--danger"
+          data-action="FALSE_ALARM" data-event-uid="{{ uid }}" data-revision="{{ rev }}">标记误报</button>
+  {%- elif state == 'ACKED' -%}
+  <button type="button" class="fg-btn fg-btn--primary"
+          data-action="ARRIVE" data-event-uid="{{ uid }}" data-revision="{{ rev }}">到场</button>
+  {#- 与 ON_SCENE 态、时间线、审计筛选统一叫「完成处置」：同一个动作不该有两个名字 -#}
+  <button type="button" class="fg-btn fg-btn--secondary"
+          data-action="RESOLVE" data-event-uid="{{ uid }}" data-revision="{{ rev }}">完成处置</button>
+  <button type="button" class="fg-btn fg-btn--danger"
+          data-action="FALSE_ALARM" data-event-uid="{{ uid }}" data-revision="{{ rev }}">标记误报</button>
+  {%- elif state == 'ON_SCENE' -%}
+  <button type="button" class="fg-btn fg-btn--primary"
+          data-action="RESOLVE" data-event-uid="{{ uid }}" data-revision="{{ rev }}">完成处置</button>
+  <button type="button" class="fg-btn fg-btn--danger"
+          data-action="FALSE_ALARM" data-event-uid="{{ uid }}" data-revision="{{ rev }}">标记误报</button>
+  {%- endif -%}
+{%- elif role == 'head_nurse' -%}
+  {%- if state in ('RESOLVED', 'FALSE_ALARM', 'CLOSED') -%}
+  <button type="button" class="fg-btn fg-btn--danger"
+          data-action="REOPEN" data-event-uid="{{ uid }}" data-revision="{{ rev }}">重开事件</button>
+  {%- endif -%}
+{%- endif -%}
+{%- endmacro %}
+
+{# ---------- 表格行内动作 ----------
+   告警中心和台账共用一格「操作」，规则和 alert_card 宏完全一致，
+   只是从卡片挪进了表格：能就地做完的，不让人先跳页。
+   ⚠️ 角色边界没变——护士只能 ACK/ARRIVE，护士长只能 REOPEN（routes/events.py §3.5）。
+      按钮上的 data-action / data-event-uid / data-revision 是 app.js initActions() 认的协议，
+      随便少一个，点下去就静默没反应。 #}
+{% macro row_actions(event, role='nurse', base='/alerts') -%}
+{%- set uid = event.event_uid -%}
+{%- set rev = event.revision if event.revision is not none else 0 -%}
+<div class="fg-rowact">
+  {%- if role == 'nurse' and event.detection_state == 'CONFIRMED' -%}
+    {%- if event.disposition_state == 'PENDING' -%}
+    <button type="button" class="fg-btn fg-btn--primary fg-btn--sm"
+            data-action="ACK" data-event-uid="{{ uid }}" data-revision="{{ rev }}">接警</button>
+    {%- elif event.disposition_state == 'ACKED' -%}
+    <button type="button" class="fg-btn fg-btn--primary fg-btn--sm"
+            data-action="ARRIVE" data-event-uid="{{ uid }}" data-revision="{{ rev }}">到场</button>
+    {%- elif event.disposition_state == 'ON_SCENE' -%}
+    <a class="fg-btn fg-btn--primary fg-btn--sm" href="{{ base }}/{{ uid }}">处置</a>
+    {%- endif -%}
+  {%- elif role == 'head_nurse' and event.disposition_state in ('RESOLVED', 'FALSE_ALARM', 'CLOSED') -%}
+  <button type="button" class="fg-btn fg-btn--secondary fg-btn--sm"
+          data-action="REOPEN" data-event-uid="{{ uid }}" data-revision="{{ rev }}">重开</button>
+  {%- endif -%}
+  <a class="fg-btn fg-btn--ghost fg-btn--sm" href="{{ base }}/{{ uid }}">查看</a>
+</div>
+{%- endmacro %}
+
+{# ---------- 快照：无图显示占位，不显示裂图 ---------- #}
+{% macro snapshot(event, thumb=true, extra_class='') -%}
+{%- set has = event.has_snapshot if event.has_snapshot is defined else false -%}
+{%- if not has and event.snapshot is defined and event.snapshot -%}
+  {%- set has = event.snapshot.exists if event.snapshot.exists is defined else true -%}
+{%- endif -%}
+<figure class="fg-snap {{ extra_class }}">
+  {%- if has -%}
+  <img src="/api/v1/events/{{ event.event_uid }}/{{ 'snapshot/thumb' if thumb else 'snapshot' }}"
+       alt="事件快照" loading="lazy" decoding="async">
+  {%- else -%}
+  <div class="fg-snap__empty">
+    {{ icon('image', 24) }}
+    <span>无快照</span>
+    <small>设备未上传</small>
+  </div>
+  {%- endif -%}
+</figure>
+{%- endmacro %}
+
+{# ---------- 告警卡（七个信息块，缺一不可） ---------- #}
+{% macro alert_card(event, can_act=true, primary=true, show_model=false) -%}
+{%- set btn_class = 'fg-btn--primary' if primary else 'fg-btn--secondary' -%}
+{# 置灰只给「从未确认过的孤立撤回」：确认后被撤回的告警当时确实响过，不该看起来像作废。 #}
+<article class="fg-alert fg-alert--{{ (event.severity or 'S3')|lower }}{% if event.detection_state == 'RETRACTED' and not event.ever_confirmed %} is-retracted{% endif %}"
+         data-event-uid="{{ event.event_uid }}"
+         data-revision="{{ event.revision if event.revision is not none else 0 }}"
+         data-severity="{{ event.severity }}"
+         data-detection="{{ event.detection_state }}"
+         data-disposition="{{ event.disposition_state }}">
+  <div class="fg-alert__main">
+    <div class="fg-alert__meta">
+      {{ sev_tag(event.severity) }}
+      <time class="fg-alert__time">{{ fmt_time(event.received_at) }}</time>
+      <span class="fg-alert__loc">{{ icon('map-pin', 14) }}{{ event.location or '—' }}</span>
+      <span>人员#{{ event.person_id if event.person_id is not none else '—' }}</span>
+      <span class="fg-alert__wait">已等 <span data-wait-since="{{ iso(event.received_at) }}">--:--</span></span>
+    </div>
+    {#- 模型原始分 / 覆盖率 / 模型版本默认不输出（show_model=false）。
+        护士端用不到：这些数字不改变任何处置动作，而护士站屏幕是朝走廊的。
+        护士长端要复盘「这个点位是不是模型老误报」时，调用方传 show_model=true。 -#}
+    <h2 class="fg-alert__title">跌倒{% if show_model %} · 模型原始分 {{ prob_text(event.prob_fall) }}{% endif %}</h2>
+    <p class="fg-alert__facts">
+      {%- if show_model %}覆盖 {{ ratio_text(event.coverage) }} · 模型 v{{ model_ver(event.model_ver) }} · {% endif -%}
+      {{ detection_tag(event.detection_state, event.ever_confirmed) }}
+      · {{ disposition_tag(event.disposition_state) }}
+      {%- if event.is_test %} · <span class="fg-tag fg-tag--test">测试数据</span>{% endif -%}
+    </p>
+    {%- if can_act and event.detection_state == 'CONFIRMED' -%}
+    <div class="fg-alert__actions">
+      {%- if event.disposition_state == 'PENDING' -%}
+      <button type="button" class="fg-btn {{ btn_class }} fg-btn--sm"
+              data-action="ACK" data-event-uid="{{ event.event_uid }}"
+              data-revision="{{ event.revision if event.revision is not none else 0 }}">接警</button>
+      {%- elif event.disposition_state == 'ACKED' -%}
+      <button type="button" class="fg-btn {{ btn_class }} fg-btn--sm"
+              data-action="ARRIVE" data-event-uid="{{ event.event_uid }}"
+              data-revision="{{ event.revision if event.revision is not none else 0 }}">到场</button>
+      {%- elif event.disposition_state == 'ON_SCENE' -%}
+      <a class="fg-btn {{ btn_class }} fg-btn--sm" href="/alerts/{{ event.event_uid }}">处置</a>
+      {%- endif -%}
+      <a class="fg-btn fg-btn--secondary fg-btn--sm" href="/alerts/{{ event.event_uid }}">详情</a>
+    </div>
+    {%- elif event.detection_state == 'RETRACTED' -%}
+    <div class="fg-alert__actions">
+      {%- if event.ever_confirmed -%}
+      <span class="fg-small fg-muted">告警当时已发出，模型随后撤回判定；人工处置不受影响</span>
+      {%- else -%}
+      <span class="fg-small fg-muted">模型已撤回，但人工处置不受影响</span>
+      {%- endif -%}
+      <a class="fg-btn fg-btn--secondary fg-btn--sm" href="/alerts/{{ event.event_uid }}">查看并处置</a>
+    </div>
+    {%- endif -%}
+  </div>
+  <div class="fg-alert__side">
+    {{ snapshot(event) }}
+  </div>
+</article>
+{%- endmacro %}
+
+{# ---------- KPI ---------- #}
+{% macro kpi_card(label, value, sub='', href='', unit='', compact=false) -%}
+{#- compact：值是「1分42秒」这种多字符文本时用，字号降一级。
+    display(48px) 下 5 个汉字就会在 4 栏卡里折成两行，把整排卡撑高。 -#}
+{%- if href -%}
+<a class="fg-kpi" href="{{ href }}">
+{%- else -%}
+<div class="fg-kpi">
+{%- endif -%}
+  <span class="fg-kpi__label">{{ label }}</span>
+  {#- 空值和真实数字不能长一样：48px/700 的粗横杠读起来像个数字。
+      「—」单独走一套弱化样式，读屏念「暂无数据」而不是「破折号」。 -#}
+  {%- if value is none -%}
+  <span class="fg-kpi__value fg-kpi__value--empty" aria-label="暂无数据">—</span>
+  {%- else -%}
+  <span class="fg-kpi__value{% if compact %} fg-kpi__value--compact{% endif %}">{{ value }}{% if unit %}<span class="fg-kpi__unit">{{ unit }}</span>{% endif %}</span>
+  {%- endif -%}
+  {#- 副文案为空时**整个 span 不渲染**：`.fg-kpi__sub` 是 display:block 且带
+      margin-top，留一个空 span 仍会占掉一行高度（2026-11-06 第95轮起有卡不写副文案）。 -#}
+  {%- if sub %}
+  <span class="fg-kpi__sub">{{ sub }}</span>
+  {%- endif -%}
+{%- if href -%}
+</a>
+{%- else -%}
+</div>
+{%- endif -%}
+{%- endmacro %}
+
+{#- ---------- P12「未分配区域」的后果：全站唯一真源 ----------
+    同一件事原先散在 7 处、4 种说法（看不到任何点位、事件和实时画面 / 看不到任何数据 /
+    这些护士看不到任何数据 / 护士看不到任何点位），换着说法说，用户会以为后果不一样 ——
+    其实是同一件事。要改口径只改这里。
+    no_zone_short 给 KPI 副标题、面板副标题这类放不下整句的窄位置用。 -#}
+{%- macro no_zone_text() -%}该护士登录后看不到任何点位、事件和实时画面{%- endmacro -%}
+{%- macro no_zone_short() -%}看不到任何点位、事件和实时画面{%- endmacro -%}
+
+{# ---------- 空态：数字位写「—」，不写 0 ---------- #}
+{% macro empty_state(title, desc='', action_text='', action_href='', icon_name='inbox') -%}
+<div class="fg-empty">
+  <div class="fg-empty__icon">{{ icon(icon_name, 48) }}</div>
+  <p class="fg-empty__title">{{ title }}</p>
+  {%- if desc -%}<p class="fg-empty__desc">{{ desc }}</p>{%- endif -%}
+  {%- if action_text and action_href -%}
+  <div class="fg-empty__action">
+    <a class="fg-btn fg-btn--secondary" href="{{ action_href }}">{{ action_text }}</a>
+  </div>
+  {%- endif -%}
+</div>
+{%- endmacro %}
+
+{# ---------- 分页（URL 是唯一状态源） ---------- #}
+{% macro pager(request, page, size, total, label='条') -%}
+{%- set pages = ((total + size - 1) // size) if (size and total) else 1 -%}
+<nav class="fg-pager" aria-label="分页">
+  <span class="fg-pager__total">共 {{ total if total is not none else '—' }} {{ label }}</span>
+  <span class="fg-pager__pages">
+    {%- if page > 1 -%}
+    <a class="fg-pager__btn" href="{{ request.url.include_query_params(page=page-1) }}" rel="prev">‹ 上一页</a>
+    {%- endif -%}
+    {%- for p in range(1, pages + 1) -%}
+      {%- if p == 1 or p == pages or (p >= page - 2 and p <= page + 2) -%}
+        {%- if p == page -%}
+        <span class="fg-pager__num is-current" aria-current="page">{{ p }}</span>
+        {%- else -%}
+        <a class="fg-pager__num" href="{{ request.url.include_query_params(page=p) }}">{{ p }}</a>
+        {%- endif -%}
+      {%- elif p == page - 3 or p == page + 3 -%}
+      <span class="fg-pager__gap">…</span>
+      {%- endif -%}
+    {%- endfor -%}
+    {%- if page < pages -%}
+    <a class="fg-pager__btn" href="{{ request.url.include_query_params(page=page+1) }}" rel="next">下一页 ›</a>
+    {%- endif -%}
+  </span>
+  <span class="fg-pager__size">每页 {{ size }}</span>
+</nav>
+{%- endmacro %}
+
+{# ---------- 事件行（台账用） ---------- #}
+{% macro event_row(event, href) -%}
+<tr class="{% if event.detection_state == 'RETRACTED' and not event.ever_confirmed %}is-retracted{% endif %}"
+    data-detail-url="{{ href }}" tabindex="0">
+  <td class="fg-nowrap">{{ sev_tag(event.severity) }}</td>
+  <td class="fg-mono fg-nowrap">{{ fmt_time(event.received_at) }}</td>
+  <td class="fg-nowrap">{{ event.location or '—' }}</td>
+  <td class="fg-nowrap">人员#{{ event.person_id if event.person_id is not none else '—' }}</td>
+  <td class="fg-nowrap">{{ detection_tag(event.detection_state, event.ever_confirmed) }}</td>
+  <td class="fg-nowrap">{{ disposition_tag(event.disposition_state) }}</td>
+  <td class="fg-nowrap">{{ event.assignee.display_name if event.assignee else '—' }}</td>
+  <td class="fg-nowrap">
+    <a class="fg-btn fg-btn--ghost fg-btn--sm" href="{{ href }}">查看</a>
+  </td>
+</tr>
+{%- endmacro %}

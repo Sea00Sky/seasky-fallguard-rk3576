@@ -1,0 +1,4 @@
+# FallGuard 配置代理的最小权限
+# 只允许重启/查询检测服务，别的什么都不给。
+# 安装：sudo install -m 440 -o root -g root p8/fallguard-agent.sudoers /etc/sudoers.d/fallguard-agent
+fallguard ALL=(root) NOPASSWD: /usr/bin/systemctl restart fallguard-sensor-multi, /usr/bin/systemctl is-active fallguard-sensor-multi, /usr/bin/systemctl reset-failed fallguard-sensor-multi

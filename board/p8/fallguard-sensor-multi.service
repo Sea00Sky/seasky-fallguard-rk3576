@@ -1,0 +1,81 @@
+[Unit]
+# per-person 感知服务：video43 selfpath 640×480 → MultiPipeline → shm / web 8888
+#
+# 与 `fallguard-sensor-assembly` 不能同时 enable，也不能同时 start：
+# 本进程 = YOLO + ST-GCN 2 个 RKNN 会话，旧 sensor 也是 2 个 ⇒ 4 个会话会
+# NPU 挂死 + 整机重启。切流必须是「停旧 → 起新」的交换。
+#
+# 检测吃 selfpath(video43)，推流吃 mainpath(video42) —— 两个节点可被两个进程同时打开。
+# 本 unit 不依赖 streamer-local，也不碰 8554。
+Description=FallGuard per-person sensor (selfpath -> shm/web)
+# 不能写 `After=multi-user.target`：本 unit 由 multi-user.target `Wants`，
+# 再反过来排到它之后就是依赖环。systemd 解环时会顺手丢掉排在环后面的任务
+# —— 实测：网关在重启后根本没被调度（journal 里一行都没有），
+# 而本 unit 自己起来了，看起来像"只有网关坏了"。排到 network.target 之后即可。
+After=network.target
+
+[Service]
+Type=simple
+# 必须指定 User：numpy/rknnlite 装在 /opt/fallguard/.local，
+# 以 root 跑会 ModuleNotFoundError。
+User=fallguard
+Group=fallguard
+WorkingDirectory=/opt/fallguard/board
+
+Environment=PYTHONUNBUFFERED=1
+# shm_adapter.py / web_stream.py 从旧部署目录导入（旧目录一字节不改）
+Environment=FG_DEPLOY_DIR=/opt/fallguard/deploy
+
+# ---- 判定参数----
+# `-` 前缀 = 文件不存在也继续启动（首次部署/回滚时不会起不来）。
+# 不要再放 drop-in 覆盖这些值：systemd 的 drop-in 在主 unit 之后解析，
+# `Environment=` 会盖掉 `EnvironmentFile=` —— 曾经那份 geo-veto.conf
+# 就是这么让云端配置变成假开关的。人工应急请改这个文件，不要加 drop-in。
+EnvironmentFile=-/opt/fallguard/board/runtime/multi.env
+
+# ---- 判定开关（生产取值）----
+# 掐在 unit 里，**不要写 runtime/multi.env**：那是 config_agent 从云端下发、
+# 下次拉取会整份覆盖的文件。也不要加 drop-in（见上一条）。
+# 这些键都**不进 `MultiConfig.as_dict()`** ⇒ 云端 config_hash 不受影响，
+# 也就是说云端 UI 看不到它们，只能靠部署记录（见 docs/ 下各 *_实测.md 的部署节）。
+Environment=FG_MULTI_WINDOW_FRAMES=60
+Environment=FG_MULTI_STITCH_BRIDGE=1
+Environment=FG_MULTI_PREGATE=1
+Environment=FG_MULTI_PREGATE_SAMPLE=8
+Environment=FG_MULTI_COOLDOWN_BREAK_PROB=0.9
+Environment=FG_MULTI_COOLDOWN_BREAK_WINDOWS=2
+
+# ---- NPU / DDR / CPU 锁频（不能依赖网关）----
+# 必须加 `+` 前缀：本 unit 是 `User=fallguard`，ExecStartPre 默认也以 fallguard 跑，
+# 写 /sys 会 Permission denied；`-` 又把错误吞掉 ⇒ 三条全是静默无效。
+# 某次重启后 NPU/DMC 仍是 ondemand，才发现这一点。
+# 不能只靠网关：传感器可能比网关先起、网关也可能挂掉。实测网关没起时
+# NPU/DMC 停在 ondemand，帧率 20.6 → 13.2 fps（< 21 fps 门 ⇒
+# 覆盖率门会把检出全拒）。
+# CPU 也锁 performance：只锁 NPU/DMC 时实测 20.6–21.2 fps，卡在 21 fps 门槛上；
+# 三锁实测 22.95 fps。这是专用设备，功耗/发热换确定性，值得。
+ExecStartPre=+/bin/sh -c 'echo performance > /sys/class/devfreq/27700000.npu/governor'
+ExecStartPre=+/bin/sh -c 'echo performance > /sys/class/devfreq/dmc/governor'
+ExecStartPre=+/bin/sh -c 'for p in /sys/devices/system/cpu/cpufreq/policy*; do echo performance > "$p/scaling_governor"; done'
+
+# ---- NPU core_mask----
+# `RKNNLite` 的 `NPU_CORE_AUTO` 在 RK3576 上只用一个核：生产运行时
+# `/sys/kernel/debug/rknpu/load` 恒为 `Core0 xx% / Core1 0%`。
+# 强制 `NPU_CORE_0_1`(=3) 后 Core1 才上工。
+# 收益（同一份权重，零精度影响）：YOLO `run` 段 28.7 → 23.3 ms；
+# 真实 MultiPipeline（2–3 人）20.4 → 24.9 fps；板上活体 1 人 21.7 → 26.3 fps。
+# 不要把 YOLO/ST-GCN 分到不同核（`--yolo-core 1 --stgcn-core 2`）：
+# 管线是单线程，两者永不同时跑，分核只会各自变慢。
+# ---- 推理后端 ----
+# 零拷贝后端（ctypes 直调 librknnrt，不走 rknnlite 包装）：检测段 33.0 → 23.9 ms，
+# 整机 30 fps。这只在 640×480 输入上成立（模型静态输入 480×640，letterbox 恒等）。
+ExecStart=/usr/bin/python3 scripts/run_sensor_multi.py --web-port 8888 --web-fps 15 --yolo-core 3 --stgcn-core 3 --zerocopy full
+
+# 崩溃 3s 后自动拉起；拉起前网关 T5 会报「事件源已消失」，恢复后自动解除
+Restart=always
+RestartSec=3
+# SIGTERM 优雅退出（run_sensor_multi.py 有信号处理器），给足释放摄像头/shm 的时间
+TimeoutStopSec=15
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,68 @@
+{# ==========================================================================
+   新建 / 编辑病区表单（partial，2026-11-06 第96轮「十改」）
+   由 head_points.html 的抽屉承载：?ward=1 新建 ｜ ?ward_edit=<ward_id> 编辑。
+   ⚠️ include 不继承调用方的宏导入，icon 必须自己 import。
+   ⚠️ 编辑态用 PATCH，且 **不回传 ward_id**（后端 allowed 里就没有它）：
+      ward_id 是主键，被 zone/point/app_user/device 四张表 FK 引用，改了等于断链。
+      所以编辑时它渲染成 readonly、**不带 name**，压根不进请求体。
+   ========================================================================== #}
+{% from "_macros.html" import icon %}
+{% set editing = ward is defined and ward %}
+<section class="fg-panel fg-col-12">
+  <div class="fg-panel__head">
+    <h2 class="fg-panel__title">{{ '编辑病区' if editing else '新建病区' }}</h2>
+    <div class="fg-panel__actions">
+      <button type="button" class="fg-drawer__close" data-drawer-close aria-label="关闭">
+        {{ icon('x', 20) }}
+      </button>
+    </div>
+  </div>
+  <form data-api-form
+        data-api-endpoint="{{ ('/api/v1/admin/wards/' ~ ward.ward_id) if editing else '/api/v1/admin/wards' }}"
+        data-api-method="{{ 'PATCH' if editing else 'POST' }}"
+        data-success-url="{{ base }}"
+        data-success-text="{{ '病区已更新' if editing else '病区已创建' }}">
+    <div class="fg-panel__body">
+      <div class="fg-formgrid">
+        <div class="fg-field">
+          <label class="fg-label" for="ward-id">病区编码<span class="fg-label__req" aria-hidden="true"></span></label>
+          {% if editing %}
+          {#- 编辑态：只读展示，不带 name ⇒ 不进请求体 -#}
+          <input class="fg-input" id="ward-id" value="{{ ward.ward_id }}"
+                 readonly translate="no" aria-describedby="ward-id-hint">
+          {% else %}
+          <input class="fg-input" id="ward-id" name="ward_id" required maxlength="32"
+                 autocomplete="off" autocapitalize="characters" spellcheck="false"
+                 translate="no" placeholder="4F-C" aria-describedby="ward-id-hint">
+          {% endif %}
+          <p class="fg-hint" id="ward-id-hint">
+            {%- if editing -%}
+              编码是主键，创建后不可改 —— 改它等于断开区域 / 点位 / 账号 / 设备四张表的归属。
+            {%- else -%}
+              大写字母、数字、下划线、短横线，2–32 位，以字母或数字开头。例如 4F-C。
+            {%- endif -%}
+          </p>
+        </div>
+        <div class="fg-field">
+          <label class="fg-label" for="ward-name">病区名称<span class="fg-label__req" aria-hidden="true"></span></label>
+          <input class="fg-input" id="ward-name" name="ward_name" required maxlength="40"
+                 autocomplete="off" placeholder="呼吸内科"
+                 value="{{ ward.ward_name if editing else '' }}">
+        </div>
+        <div class="fg-field">
+          <label class="fg-label" for="ward-floor">楼层</label>
+          <input class="fg-input" id="ward-floor" name="floor" maxlength="16"
+                 autocomplete="off" placeholder="4F"
+                 value="{{ (ward.floor or '') if editing else '' }}">
+        </div>
+      </div>
+      {#- aria-live：这个错误框是**异步**填进去的（fetch 回来才写），读屏不会自己念，
+          得挂在 live region 上。项目里其它几处表单错误框还没挂，这轮先把自己这个补上。 -#}
+      <div class="fg-error-text fg-mt-3" data-form-error aria-live="polite" hidden></div>
+    </div>
+    <div class="fg-panel__foot">
+      <button type="submit" class="fg-btn fg-btn--primary">{{ '保存修改' if editing else '创建病区' }}</button>
+      <a class="fg-btn fg-btn--ghost" href="{{ base }}" data-drawer-close>取消</a>
+    </div>
+  </form>
+</section>

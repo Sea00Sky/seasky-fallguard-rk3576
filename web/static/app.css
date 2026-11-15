@@ -1,0 +1,7434 @@
+/* ==========================================================================
+   衡护 HENGUARD · 应用样式（手写，无构建链）
+   硬规则：直角为主（0/2/4px）；禁止渐变；禁止 emoji；不使用 8px 以上圆角。
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   0. Reset 与基础排版
+   -------------------------------------------------------------------------- */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  min-height: 100vh;
+  background: var(--fg-bg-canvas);
+  color: var(--fg-text-primary);
+  font-family: var(--fg-font-ui);
+  font-size: var(--fg-text-body);
+  line-height: var(--fg-leading-body);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+h1,
+h2,
+h3,
+h4,
+p,
+figure,
+blockquote,
+dl,
+dd {
+  margin: 0;
+}
+
+ul,
+ol {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+a {
+  color: var(--fg-link);
+  text-decoration: none;
+}
+
+a:hover {
+  color: var(--fg-link-hover);
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+img,
+svg {
+  display: block;
+  max-width: 100%;
+}
+
+table {
+  border-collapse: collapse;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+:focus-visible {
+  outline: 2px solid var(--fg-border-focus);
+  outline-offset: 2px;
+}
+
+::selection {
+  background: var(--fg-pine-100);
+  color: var(--fg-text-primary);
+}
+
+/* 滚动条：细、方、低对比 */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--fg-neutral-300) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: var(--fg-neutral-300);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* --------------------------------------------------------------------------
+   1. App Shell：左轨 248 + 指挥栏 72 + 内容 12 栏
+   -------------------------------------------------------------------------- */
+/* 2026-11-03 用户要求：页面本身不滚，滚的只有内容区/组件。
+   外壳固定一屏 —— 顶栏、左导航常驻，滚动条只出现在 .fg-page 内部。
+   dvh 兜住移动端地址栏收起/展开；vh 是旧浏览器的兜底。 */
+.fg-shell {
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+}
+
+body.fg-app {
+  overflow: hidden;
+}
+
+.fg-main {
+  height: 100%;
+  min-height: 0;
+  margin-left: var(--fg-nav-w);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* 页面级滚动容器：只滚内容，不动顶栏/导航。
+   overscroll-behavior 防止滚到底后把整页（或浏览器）一起带着弹。 */
+.fg-page {
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  padding: 0 var(--fg-page-x) var(--fg-space-12);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.fg-page-head {
+  min-height: var(--fg-page-header-h);
+  /* 一屏布局里它是 .fg-page 的 flex 子项：不设 flex:none 会被内容挤扁，
+     右侧动作按钮就会压到下面的白板上（2026-11-03 实测）。 */
+  flex: none;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--fg-space-6);
+  padding: var(--fg-space-5) 0 var(--fg-space-6);
+}
+
+.fg-page-head__main {
+  min-width: 0;
+}
+
+.fg-page-title {
+  font-size: var(--fg-text-h1);
+  line-height: var(--fg-leading-h1);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.fg-page-sub {
+  margin-top: var(--fg-space-1);
+  color: var(--fg-text-tertiary);
+  font-size: var(--fg-text-body);
+  line-height: var(--fg-leading-body);
+}
+
+/* 副标题改为可选：模板不填就整行不出现，别在标题下留一条空行。
+   有些页面标题已经说清了，再加一句「本页可以做什么」只是噪声。 */
+.fg-page-sub:empty {
+  display: none;
+}
+
+.fg-page-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--fg-space-3);
+  padding-top: var(--fg-space-2);
+  flex-shrink: 0;
+}
+
+/* 页面没有动作按钮时整条不出现（值班工作台 2026-11-03 删掉刷新/全部告警后就是空的）。
+   与 .fg-page-sub:empty 同一处理：不画空槽，也不靠模板到处写 if。 */
+.fg-page-actions:empty {
+  display: none;
+}
+
+/* 瘦页头：不画大标题，只留右侧动作条（值班工作台用）。
+   标题本身还在 DOM 里（sr-only），读屏和 SEO 不受影响。 */
+.fg-page-head--slim {
+  min-height: 0;
+  padding: 0 0 var(--fg-space-3);
+  justify-content: flex-end;
+}
+
+/* 12 栏内容栅格 */
+.fg-content {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: var(--fg-grid-gap);
+  align-items: start;
+}
+
+.fg-content > .fg-banner {
+  grid-column: span 12;
+}
+
+.fg-col-12 { grid-column: span 12; }
+.fg-col-8  { grid-column: span 8; }
+.fg-col-6  { grid-column: span 6; }
+.fg-col-4  { grid-column: span 4; }
+.fg-col-3  { grid-column: span 3; }
+
+.fg-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--fg-space-6);
+  min-width: 0;
+}
+
+/* 工作台主栅格：1fr + 360px（右栏是待处置队列，不是状态栏） */
+.fg-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--fg-side-w);
+  gap: var(--fg-grid-gap);
+  align-items: start;
+  min-width: 0;
+}
+
+.fg-split__main,
+.fg-split__side {
+  min-width: 0;
+}
+
+/* --------------------------------------------------------------------------
+   2. 左侧导航轨
+   -------------------------------------------------------------------------- */
+.fg-nav {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  z-index: 50;
+  width: var(--fg-nav-w);
+  background: var(--fg-bg-nav);
+  color: var(--fg-text-nav);
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--fg-border-nav);
+}
+
+.fg-nav__brand {
+  height: 88px;
+  display: flex;
+  align-items: center;
+  gap: var(--fg-space-3);
+  padding: 0 var(--fg-space-6);
+  border-bottom: 1px solid var(--fg-border-nav);
+  flex-shrink: 0;
+}
+
+.fg-nav__logo {
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  color: var(--fg-pine-200);
+}
+
+.fg-nav__wordmark {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  line-height: 1.2;
+}
+
+.fg-nav__wordmark strong {
+  font-size: var(--fg-text-h3);
+  font-weight: 700;
+  letter-spacing: .02em;
+  color: var(--fg-text-inverse);
+}
+
+.fg-nav__wordmark span {
+  font-size: var(--fg-text-caption);
+  letter-spacing: .14em;
+  color: var(--fg-text-nav-muted);
+}
+
+.fg-nav__nav {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--fg-space-2) 0 var(--fg-space-4);
+}
+
+/* 桌面端收起 / 展开导航（2026-11-03）。
+   ≤1279 导航本来就是 80px（响应式强制），按钮在那一档隐藏。
+   收起状态挂在 <html> 上，刷新由 base.html 的内联脚本在首帧前落上。 */
+.fg-nav__collapse {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: var(--fg-space-2);
+  height: 40px;
+  margin: var(--fg-space-3) var(--fg-space-2) var(--fg-space-4);
+  padding: 0 var(--fg-space-3);
+  border: 1px solid var(--fg-border-nav);
+  border-radius: var(--fg-radius-sm);
+  background: transparent;
+  color: var(--fg-text-nav-muted);
+  font-family: var(--fg-font-ui);
+  font-size: var(--fg-text-body-sm);
+  cursor: pointer;
+  transition: background-color var(--fg-motion-fast) var(--fg-ease-out),
+              color var(--fg-motion-fast) var(--fg-ease-out);
+}
+
+.fg-nav__collapse:hover {
+  background: var(--fg-bg-nav-hover);
+  color: var(--fg-text-inverse);
+}
+
+.fg-nav__collapse svg {
+  flex-shrink: 0;
+  transition: transform var(--fg-motion-fast) var(--fg-ease-out);
+}
+
+/* 收起态（≥1280）。文字视觉上消失但保留可访问名 —— 读屏仍念得出「值班工作台」，
+   否则 80px 导航就是一排无名图标。 */
+@media (min-width: 1280px) {
+  html.fg-nav-collapsed .fg-main {
+    margin-left: var(--fg-nav-w-collapsed);
+  }
+
+  html.fg-nav-collapsed .fg-nav {
+    width: var(--fg-nav-w-collapsed);
+  }
+
+  html.fg-nav-collapsed .fg-nav__brand {
+    justify-content: center;
+    padding: 0;
+  }
+
+  html.fg-nav-collapsed .fg-nav__wordmark,
+  html.fg-nav-collapsed .fg-nav__badge {
+    display: none;
+  }
+
+  html.fg-nav-collapsed .fg-nav__text {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+
+  html.fg-nav-collapsed .fg-nav__link {
+    justify-content: center;
+    padding: 0;
+    margin: 2px var(--fg-space-2);
+  }
+
+  html.fg-nav-collapsed .fg-nav__link.is-active::before {
+    position: absolute;
+    left: 4px;
+  }
+
+  html.fg-nav-collapsed .fg-nav__collapse {
+    justify-content: center;
+    padding: 0;
+  }
+
+  /* 同一个箭头翻个面：收起时指向右（展开方向），不换图标节点 */
+  html.fg-nav-collapsed .fg-nav__collapse svg {
+    transform: rotate(180deg);
+  }
+}
+
+/* ⚠️ .fg-nav__group-title（侧栏分组小字）2026-11-05 已连样式一起删：
+   两个角色的分组标题都去掉了，规则零消费者。别只删入口留规则。 */
+
+.fg-nav__link {
+  position: relative;
+  height: 48px;
+  margin: 2px var(--fg-space-2);
+  padding: 0 var(--fg-space-4);
+  display: flex;
+  align-items: center;
+  gap: var(--fg-space-3);
+  border-radius: var(--fg-radius-sm);
+  color: var(--fg-text-nav);
+  font-size: var(--fg-text-body);
+  line-height: 24px;
+  font-weight: 500;
+  white-space: nowrap;
+  transition: background-color var(--fg-motion-fast) var(--fg-ease-out),
+              color var(--fg-motion-fast) var(--fg-ease-out);
+}
+
+.fg-nav__link:hover {
+  background: var(--fg-bg-nav-hover);
+  color: var(--fg-text-inverse);
+}
+
+.fg-nav__link.is-active {
+  background: var(--fg-bg-nav-active);
+  color: var(--fg-text-inverse);
+}
+
+/* 选中态三重编码：底色 + 6×6 黄铜方块 + 白字 */
+.fg-nav__link.is-active::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  flex-shrink: 0;
+  background: var(--fg-brass);
+}
+
+.fg-nav__link:not(.is-active)::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  flex-shrink: 0;
+  background: transparent;
+}
+
+.fg-nav__icon {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+}
+
+.fg-nav__text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fg-nav__badge {
+  margin-left: auto;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--fg-radius-xs);
+  background: var(--fg-danger-600);
+  color: var(--fg-neutral-0);
+  font-size: var(--fg-text-caption);
+  line-height: 18px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.fg-nav__user {
+  flex-shrink: 0;
+  height: 72px;
+  display: flex;
+  align-items: center;
+  gap: var(--fg-space-2);
+  padding: 0 var(--fg-space-4);
+  border-top: 1px solid var(--fg-border-nav);
+}
+
+.fg-nav__avatar {
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--fg-radius-xs);
+  background: var(--fg-bg-nav-active);
+  color: var(--fg-pine-100);
+  font-size: var(--fg-text-body-sm);
+  font-weight: 600;
+}
+
+.fg-nav__userinfo {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  line-height: 1.3;
+}
+
+.fg-nav__username {
+  font-size: var(--fg-text-body-sm);
+  font-weight: 600;
+  color: var(--fg-text-inverse);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fg-nav__role {
+  font-size: var(--fg-text-caption);
+  color: var(--fg-text-nav-muted);
+  white-space: nowrap;
+}
+
+.fg-nav__logoutform {
+  display: flex;
+  margin: 0;
+  flex-shrink: 0;
+}
+
+.fg-nav__logout {
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: var(--fg-radius-xs);
+  background: transparent;
+  color: var(--fg-text-nav-muted);
+}
+
+.fg-nav__logout:hover {
+  background: var(--fg-bg-nav-hover);
+  color: var(--fg-text-inverse);
+}
+
+.fg-nav__scrim {
+  display: none;
+}
+
+/* --------------------------------------------------------------------------
+   3. 顶部指挥栏
+   -------------------------------------------------------------------------- */
+.fg-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  height: var(--fg-topbar-h);
+  /* ⚠️ 一屏布局里 .fg-main 是 flex 列：顶栏不设 flex:none 会被页面内容挤扁
+     （2026-11-03 实测 72px → 41px） */
+  flex: none;
+  background: var(--fg-bg-surface);
+  border-bottom: 1px solid var(--fg-border-default);
+}
+
+.fg-topbar__inner {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  gap: var(--fg-space-4);
+  padding: 0 var(--fg-page-x);
+}
+
+.fg-topbar__ward {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--fg-space-2);
+  color: var(--fg-text-tertiary);
+  font-size: var(--fg-text-body-sm);
+  white-space: nowrap;
+}
+
+.fg-topbar__ward strong {
+  color: var(--fg-text-primary);
+  font-weight: 600;
+}
+
+.fg-topbar__sep {
+  width: 1px;
+  height: 20px;
+  background: var(--fg-border-default);
+}
+
+.fg-search {
+  position: relative;
+  width: 280px;
+  height: 40px;
+  flex-shrink: 0;
+}
+
+.fg-search__icon {
+  position: absolute;
+  top: 50%;
+  left: 12px;
+  width: 18px;
+  height: 18px;
+  transform: translateY(-50%);
+  color: var(--fg-text-tertiary);
+  pointer-events: none;
+}
+
+.fg-search__input {
+  width: 100%;
+  height: 100%;
+  padding: 0 12px 0 38px;
+  border: 1px solid var(--fg-border-control);
+  border-radius: var(--fg-radius-xs);
+  background: var(--fg-bg-raised);
+  font-size: var(--fg-text-body-sm);
+}
+
+.fg-search__input::placeholder {
+  /* placeholder 是活动控件里的提示文字，不是禁用控件：
+     --fg-text-disabled 在白底上只有 2.22:1。tertiary 已经是达标的最低一级。 */
+  color: var(--fg-text-tertiary);
+}
+
+.fg-topbar__right {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--fg-space-3);
+  flex-shrink: 0;
+}
+
+/* .fg-shift（顶栏班次牌）2026-11-04 删除：班次时间是我们编的。
+   模板里那个 span 也一起去掉了，别再加回来。 */
+
+.fg-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--fg-text-body-sm);
+  color: var(--fg-text-secondary);
+  white-space: nowrap;
+}
+
+.fg-status__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--fg-neutral-400);
+}
+
+.fg-status--online .fg-status__dot { background: var(--fg-success-600); }
+.fg-status--offline .fg-status__dot { background: var(--fg-danger-600); }
+.fg-status--degraded .fg-status__dot { background: var(--fg-warning-600); }
+
+.fg-status--offline { color: var(--fg-danger-700); }
+.fg-status--degraded { color: var(--fg-warning-700); }
+
+.fg-iconbtn {
+  position: relative;
+  width: 40px;
+  height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid transparent;
+  border-radius: var(--fg-radius-sm);
+  background: transparent;
+  color: var(--fg-text-secondary);
+}
+
+.fg-iconbtn:hover {
+  background: var(--fg-bg-table-hover);
+  color: var(--fg-text-primary);
+}
+
+.fg-notify__count {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--fg-radius-xs);
+  background: var(--fg-danger-600);
+  color: var(--fg-neutral-0);
+  font-size: 12px;
+  line-height: 18px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 用户菜单（原生 details） */
+.fg-usermenu {
+  position: relative;
+}
+
+.fg-usermenu__summary {
+  height: 40px;
+  padding: 0 8px;
+  display: flex;
+  align-items: center;
+  gap: var(--fg-space-2);
+  border-radius: var(--fg-radius-sm);
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+
+.fg-usermenu__summary::-webkit-details-marker {
+  display: none;
+}
+
+.fg-usermenu__summary:hover {
+  background: var(--fg-bg-table-hover);
+}
+
+.fg-avatar {
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--fg-radius-xs);
+  background: var(--fg-pine-100);
+  color: var(--fg-pine-700);
+  font-size: var(--fg-text-body-sm);
+  font-weight: 600;
+}
+
+.fg-usermenu__meta {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.25;
+}
+
+.fg-usermenu__name {
+  font-size: var(--fg-text-body-sm);
+  font-weight: 600;
+  color: var(--fg-text-primary);
+}
+
+.fg-usermenu__role {
+  font-size: var(--fg-text-caption);
+  color: var(--fg-text-tertiary);
+}
+
+.fg-usermenu__panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 60;
+  /* 2026-11-04：这块从「小下拉」升格成个人卡片（/me 页删掉后它接管全部内容），
+     200px 装不下三个数 + 两行说明；手机上再窄也要留出 12px 边距。 */
+  width: 320px;
+  max-width: calc(100vw - 24px);
+  padding: var(--fg-space-2);
+  background: var(--fg-bg-raised);
+  border: 1px solid var(--fg-border-default);
+  border-radius: var(--fg-radius-sm);
+  box-shadow: var(--fg-shadow-popover);
+}
+
+.fg-usermenu__item {
+  width: 100%;
+  min-height: 40px;
+  padding: 0 12px;
+  display: flex;
+  align-items: center;
+  gap: var(--fg-space-2);
+  border: 0;
+  border-radius: var(--fg-radius-xs);
+  background: transparent;
+  color: var(--fg-text-secondary);
+  font-size: var(--fg-text-body-sm);
+  text-align: left;
+}
+
+.fg-usermenu__item:hover {
+  background: var(--fg-bg-table-hover);
+  color: var(--fg-text-primary);
+}
+
+.fg-usermenu__item--danger {
+  color: var(--fg-danger-700);
+}
+
+.fg-navtoggle {
+  display: none;
+  width: 40px;
+  height: 40px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--fg-border-strong);
+  border-radius: var(--fg-radius-sm);
+  background: transparent;
+  color: var(--fg-text-secondary);
+}
+
+/* --------------------------------------------------------------------------
+   4. 横幅（不可关闭）
+   -------------------------------------------------------------------------- */
+.fg-banner {
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  gap: var(--fg-space-3);
+  padding: 0 var(--fg-page-x);
+  font-size: var(--fg-text-body-sm);
+  line-height: var(--fg-leading-body-sm);
+  border-bottom: 1px solid transparent;
+}
+
+.fg-banner--danger {
+  background: var(--fg-danger-50);
+  border-bottom-color: var(--fg-danger-100);
+  color: var(--fg-danger-700);
+}
+
+.fg-banner--warn {
+  background: var(--fg-warning-50);
+  border-bottom-color: var(--fg-warning-100);
+  color: var(--fg-warning-700);
+}
+
+.fg-banner--info {
+  background: var(--fg-info-50);
+  border-bottom-color: var(--fg-info-100);
+  color: var(--fg-info-700);
+}
+
+.fg-banner__icon {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+}
+
+.fg-banner__text {
+  min-width: 0;
+}
+
+.fg-banner__text strong {
+  font-weight: 700;
+}
+
+/* --------------------------------------------------------------------------
+   5. 按钮
+   -------------------------------------------------------------------------- */
+.fg-btn {
+  height: 40px;
+  padding: 0 var(--fg-space-4);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--fg-space-2);
+  border: 1px solid transparent;
+  border-radius: var(--fg-radius-xs);
+  font-family: var(--fg-font-ui);
+  font-size: var(--fg-text-body);
+  line-height: 24px;
+  font-weight: 600;
+  white-space: nowrap;
+  text-decoration: none;
+  transition: background-color var(--fg-motion-fast) var(--fg-ease-out),
+              border-color var(--fg-motion-fast) var(--fg-ease-out),
+              color var(--fg-motion-fast) var(--fg-ease-out);
+}
+
+.fg-btn__icon {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+
+.fg-btn--primary {
+  background: var(--fg-primary);
+  border-color: var(--fg-primary);
+  color: var(--fg-text-inverse);
+}
+
+.fg-btn--primary:hover {
+  background: var(--fg-pine-700);
+  border-color: var(--fg-pine-700);
+  color: var(--fg-text-inverse);
+}
+
+.fg-btn--primary:active {
+  background: var(--fg-pine-800);
+  border-color: var(--fg-pine-800);
+}
+
+.fg-btn--secondary {
+  background: transparent;
+  border-color: var(--fg-border-strong);
+  color: var(--fg-neutral-800);
+}
+
+.fg-btn--secondary:hover {
+  background: var(--fg-bg-table-hover);
+  border-color: var(--fg-neutral-400);
+  color: var(--fg-text-primary);
+}
+
+.fg-btn--ghost {
+  background: transparent;
+  border-color: transparent;
+  color: var(--fg-text-secondary);
+}
+
+.fg-btn--ghost:hover {
+  background: var(--fg-bg-table-hover);
+  color: var(--fg-text-primary);
+}
+
+.fg-btn--danger {
+  background: transparent;
+  border-color: var(--fg-danger-600);
+  color: var(--fg-danger-700);
+}
+
+.fg-btn--danger:hover {
+  background: var(--fg-danger-50);
+}
+
+.fg-btn--danger-solid {
+  background: var(--fg-danger-600);
+  border-color: var(--fg-danger-600);
+  color: var(--fg-neutral-0);
+}
+
+.fg-btn--danger-solid:hover {
+  background: var(--fg-danger-700);
+  border-color: var(--fg-danger-700);
+}
+
+.fg-btn--sm {
+  height: 32px;
+  padding: 0 var(--fg-space-3);
+  font-size: var(--fg-text-body-sm);
+  line-height: 20px;
+}
+
+.fg-btn--sm .fg-btn__icon {
+  width: 16px;
+  height: 16px;
+}
+
+.fg-btn--lg {
+  height: 48px;
+  padding: 0 var(--fg-space-5);
+  font-size: var(--fg-text-body-lg);
+  line-height: 28px;
+}
+
+.fg-btn:disabled,
+.fg-btn[aria-disabled="true"] {
+  background: var(--fg-bg-canvas);
+  border-color: var(--fg-border-default);
+  color: var(--fg-text-disabled);
+  cursor: not-allowed;
+}
+
+.fg-btn.is-loading {
+  position: relative;
+  color: transparent !important;
+  pointer-events: none;
+}
+
+.fg-btn.is-loading::after {
+  content: "";
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  color: var(--fg-text-inverse);
+  animation: fg-spin .7s linear infinite;
+}
+
+.fg-btn--secondary.is-loading::after,
+.fg-btn--ghost.is-loading::after,
+.fg-btn--danger.is-loading::after {
+  color: var(--fg-text-secondary);
+}
+
+.fg-btn-group {
+  display: inline-flex;
+  gap: var(--fg-space-3);
+  flex-wrap: wrap;
+}
+
+@keyframes fg-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* --------------------------------------------------------------------------
+   6. 标签（状态三重编码：色 + 文字 + 形状）
+   -------------------------------------------------------------------------- */
+.fg-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 24px;
+  padding: 0 var(--fg-space-2);
+  border: 1px solid transparent;
+  border-radius: var(--fg-radius-xs);
+  font-size: var(--fg-text-caption);
+  line-height: var(--fg-leading-caption);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.fg-tag__mark {
+  width: 8px;
+  height: 8px;
+  flex-shrink: 0;
+  background: currentColor;
+}
+
+/* 级别标签与处置态标签共用一套壳（同底色、同边框、同 8×8 方块），
+   S1 的 #B3261E 和「待接警」的 #A32A20 之间只有 1.10:1 —— 并排放在
+   「S1 紧急 | 待接警」这一行里，肉眼分不出哪个是级别哪个是处置态。
+   解法是加第二重形状编码：级别用竖条，处置态继续用方块。 */
+.fg-tag--s1 .fg-tag__mark,
+.fg-tag--s2 .fg-tag__mark,
+.fg-tag--s3 .fg-tag__mark {
+  width: 4px;
+  height: 12px;
+}
+
+.fg-tag--s1 {
+  background: var(--fg-status-pending-bg);
+  border-color: var(--fg-status-pending-border);
+  color: var(--fg-s1);
+}
+
+.fg-tag--s2 {
+  background: var(--fg-s2-bg);
+  border-color: var(--fg-s2-border);
+  color: var(--fg-s2);
+}
+
+/* S3 用空心方块：色盲也能与 S1/S2 区分 */
+.fg-tag--s3 {
+  background: var(--fg-s3-bg);
+  border-color: var(--fg-s3-border);
+  color: var(--fg-s3);
+}
+
+.fg-tag--s3 .fg-tag__mark {
+  background: transparent;
+  border: 1px solid currentColor;
+}
+
+.fg-tag--confirmed {
+  background: var(--fg-success-50);
+  border-color: var(--fg-success-100);
+  color: var(--fg-success-700);
+}
+
+.fg-tag--retracted {
+  background: var(--fg-status-retracted-bg);
+  border-color: var(--fg-status-retracted-border);
+  color: var(--fg-status-retracted-fg);
+}
+
+/* 斜线标记：模型已撤回 */
+.fg-tag--retracted .fg-tag__mark {
+  background: transparent;
+  border: 1px solid currentColor;
+  position: relative;
+}
+
+.fg-tag--retracted .fg-tag__mark::after {
+  content: "";
+  position: absolute;
+  inset: 2px -1px;
+  border-top: 1px solid currentColor;
+  transform: rotate(-45deg);
+}
+
+.fg-tag--pending {
+  background: var(--fg-status-pending-bg);
+  border-color: var(--fg-status-pending-border);
+  color: var(--fg-status-pending-fg);
+}
+
+.fg-tag--ack {
+  background: var(--fg-status-ack-bg);
+  border-color: var(--fg-status-ack-border);
+  color: var(--fg-status-ack-fg);
+}
+
+.fg-tag--scene {
+  background: var(--fg-info-100);
+  border-color: var(--fg-info-100);
+  color: var(--fg-info-700);
+}
+
+.fg-tag--resolved {
+  background: var(--fg-status-resolved-bg);
+  border-color: var(--fg-status-resolved-border);
+  color: var(--fg-status-resolved-fg);
+}
+
+.fg-tag--false {
+  background: var(--fg-status-false-bg);
+  border-color: var(--fg-status-false-border);
+  color: var(--fg-status-false-fg);
+}
+
+.fg-tag--closed {
+  background: var(--fg-neutral-100);
+  border-color: var(--fg-border-default);
+  color: var(--fg-text-tertiary);
+}
+
+.fg-tag--test {
+  background: var(--fg-accent-50);
+  border-color: var(--fg-accent-100);
+  color: var(--fg-accent-800);
+}
+
+/* --------------------------------------------------------------------------
+   7. 面板 / 卡片
+   -------------------------------------------------------------------------- */
+.fg-panel {
+  background: var(--fg-bg-surface);
+  border: 1px solid var(--fg-border-default);
+  border-radius: var(--fg-radius-sm);
+  min-width: 0;
+}
+
+.fg-panel__head {
+  min-height: 56px;
+  display: flex;
+  align-items: center;
+  gap: var(--fg-space-3);
+  padding: var(--fg-space-3) var(--fg-space-5);
+  border-bottom: 1px solid var(--fg-border-subtle);
+}
+
+.fg-panel__title {
+  font-size: var(--fg-text-h3);
+  line-height: var(--fg-leading-h3);
+  font-weight: 600;
+  /* 标题永远不折行。4 栏窄面板（总览的实时画面/点位与模型）里，
+     副标题的 max-content 会把标题挤成「实时画／面」这种两行。 */
+  white-space: nowrap;
+  flex: 0 0 auto;
+}
+
+.fg-panel__sub {
+  color: var(--fg-text-tertiary);
+  font-size: var(--fg-text-body-sm);
+  line-height: var(--fg-leading-body-sm);
+  /* 挤不下时截断副标题，而不是把标题折行——标题是这一块的名字，副标题是注解 */
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fg-panel__actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--fg-space-2);
+}
+
+.fg-panel__body {
+  padding: var(--fg-space-5);
+}
+
+.fg-panel__body--flush {
+  padding: 0;
+}
+
+/* 面板里的表格：tabs / 筛选栏 / 表格都住在同一张卡里，
+   表格自带的边框和圆角要去掉，否则是「卡里再套一张卡」的双线框。 */
+.fg-panel > .fg-tabs {
+  padding: 0 var(--fg-space-5);
+}
+
+.fg-panel > .fg-filters {
+  padding: var(--fg-space-4) var(--fg-space-5);
+}
+
+.fg-panel__body--flush > .fg-table-wrap {
+  background: none;
+  border: 0;
+  border-radius: 0;
+}
+
+/* 行内动作格：状态相关的那个按钮在前，[查看] 恒定在后 */
+.fg-rowact {
+  display: flex;
+  align-items: center;
+  gap: var(--fg-space-2);
+  justify-content: flex-end;
+}
+
+.fg-panel__foot {
+  min-height: 56px;
+  display: flex;
+  align-items: center;
+  gap: var(--fg-space-3);
+  padding: var(--fg-space-3) var(--fg-space-5);
+  border-top: 1px solid var(--fg-border-subtle);
+}
+
+/* --------------------------------------------------------------------------
+   8. KPI
+   -------------------------------------------------------------------------- */
+.fg-kpis {
+  grid-column: span 12;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--fg-grid-gap);
+}
+
+.fg-kpis--5 {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.fg-kpi {
+  display: block;
+  min-width: 0;
+  padding: var(--fg-space-4) var(--fg-space-5);
+  background: var(--fg-bg-surface);
+  border: 1px solid var(--fg-border-default);
+  border-radius: var(--fg-radius-sm);
+  color: inherit;
+}
+
+a.fg-kpi:hover {
+  background: var(--fg-bg-raised);
+  border-color: var(--fg-border-strong);
+  color: inherit;
+}
+
+.fg-kpi__label {
+  display: block;
+  color: var(--fg-text-tertiary);
+  font-size: var(--fg-text-body-sm);
+  line-height: var(--fg-leading-body-sm);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fg-kpi__value {
+  display: block;
+  margin-top: var(--fg-space-1);
+  font-family: var(--fg-font-num);
+  font-size: var(--fg-text-display);
+  line-height: var(--fg-leading-display);
+  /* 600 不是 700：static/fonts 里只有 Plex Mono 的 400/500/600 三档字面，
+     要 700 浏览器会合成假粗——48px 下笔画发糊、字腔粘连。V2 页的 KPI 走 Mono，
+     所以这里必须落在真字面；V1 页回落中文 UI 字体时 600 仍映射到它的 Bold。 */
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+/* 空值「—」：小一号、常规字重、次级色。不能和真实数字同色同重，
+   否则 48px 的粗横杠读起来像数据本身。 */
+.fg-kpi__value--empty {
+  font-size: var(--fg-text-h2);
+  line-height: var(--fg-leading-h2);
+  font-weight: 400;
+  color: var(--fg-text-tertiary);
+}
+
+/* 「1分42秒」这类文本值降一级字号，否则 4 栏卡里必然折行 */
+.fg-kpi__value--compact {
+  font-size: var(--fg-text-h1);
+  line-height: var(--fg-leading-h1);
+  letter-spacing: 0;
+}
+
+.fg-kpi__unit {
+  margin-left: 4px;
+  font-size: var(--fg-text-h3);
+  line-height: var(--fg-leading-h3);
+  font-weight: 600;
+  color: var(--fg-text-tertiary);
+}
+
+.fg-kpi__sub {
+  display: block;
+  margin-top: var(--fg-space-1);
+  color: var(--fg-text-tertiary);
+  font-size: var(--fg-text-body-sm);
+  line-height: var(--fg-leading-body-sm);
+}
+
+.fg-kpi__sub--warn { color: var(--fg-warning-700); }
+.fg-kpi__sub--danger { color: var(--fg-danger-700); }
+.fg-kpi__sub--ok { color: var(--fg-success-700); }
+
+/* --------------------------------------------------------------------------
+   9. 告警卡（左 6px 状态条）
+   -------------------------------------------------------------------------- */
+.fg-alert {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 128px;
+  gap: var(--fg-space-4);
+  padding: var(--fg-space-4) var(--fg-space-4) var(--fg-space-4) var(--fg-space-5);
+  background: var(--fg-bg-raised);
+  border: 1px solid var(--fg-border-default);
+  border-left: 6px solid var(--fg-s1);
+  border-radius: var(--fg-radius-sm);
+}
+
+.fg-alert--s1 { border-left-color: var(--fg-s1); }
+.fg-alert--s2 { border-left-color: var(--fg-s2); }
+.fg-alert--s3 { border-left-color: var(--fg-s3); }
+
+.fg-alert.is-retracted {
+  background: var(--fg-neutral-100);
+  border-color: var(--fg-border-default);
+  border-left-color: var(--fg-retracted);
+}
+
+.fg-alert.is-retracted .fg-alert__title,
+.fg-alert.is-retracted .fg-alert__facts {
+  color: var(--fg-text-tertiary);
+}
+
+.fg-alert__main {
+  min-width: 0;
+}
+
+.fg-alert__meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--fg-space-3);
+  color: var(--fg-text-secondary);
+  font-size: var(--fg-text-body-sm);
+  line-height: var(--fg-leading-body-sm);
+}
+
+.fg-alert__time {
+  font-family: var(--fg-font-mono);
+  font-size: var(--fg-text-body-sm);
+  color: var(--fg-text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.fg-alert__loc {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.fg-alert__loc svg {
+  width: 14px;
+  height: 14px;
+  color: var(--fg-text-tertiary);
+}
+
+.fg-alert__wait {
+  margin-left: auto;
+  color: var(--fg-danger-700);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.fg-alert__title {
+  margin-top: var(--fg-space-2);
+  font-size: var(--fg-text-h3);
+  line-height: var(--fg-leading-h3);
+  font-weight: 600;
+  color: var(--fg-text-primary);
+}
+
+.fg-alert__facts {
+  margin-top: 4px;
+  color: var(--fg-text-tertiary);
+  font-size: var(--fg-text-body-sm);
+  line-height: var(--fg-leading-body-sm);
+}
+
+.fg-alert__actions {
+  margin-top: var(--fg-space-3);
+  display: flex;
+  align-items: center;
+  gap: var(--fg-space-3);
+  flex-wrap: wrap;
+}
+
+.fg-alert__side {
+  min-width: 0;
+}
+
+.fg-alert__side .fg-snap {
+  width: 128px;
+}
+
+/* 快照 4:3 */
+.fg-snap {
+  position: relative;
+  display: block;
+  aspect-ratio: 4 / 3;
+  width: 100%;
+  overflow: hidden;
+  background: var(--fg-bg-video);
+  border: 1px solid var(--fg-border-default);
+  border-radius: var(--fg-radius-xs);
+}
+
+.fg-snap img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.fg-snap__empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  color: var(--fg-neutral-400);
+  font-size: var(--fg-text-caption);
+  line-height: var(--fg-leading-caption);
+  text-align: center;
+  padding: var(--fg-space-2);
+}
+
+.fg-snap__empty svg {
+  width: 24px;
+  height: 24px;
+  margin-bottom: 2px;
+}
+
+.fg-snap__empty small {
+  /* 原来 11px，比父级的 12px 还小——「板端未上传」是说明字，不该比正文更小 */
+  font-size: var(--fg-text-caption);
+  color: var(--fg-neutral-500);
+}
+
+.fg-snap--lg {
+  width: 100%;
+  max-width: 480px;
+}
+
+/* 告警视频片段（P9 ③）。跟快照同宽，深色底是为了在加载前不闪白 */
+.fg-clip {
+  display: block;
+  width: 100%;
+  max-width: 640px;
+  /* --fg-radius-md 从来没定义过，这行一直在吃 12px 兜底（硬约束只允许 0/2/4） */
+  border-radius: var(--fg-radius-sm);
+  background: var(--fg-bg-video);
+  aspect-ratio: 16 / 9;   /* 推流是 720p；元数据加载前先占住位置，避免页面跳动 */
+}
+
+/* --------------------------------------------------------------------------
+   10. 待处置队列 / 设备条
+   -------------------------------------------------------------------------- */
+.fg-queue {
+  display: flex;
+  flex-direction: column;
+}
+
+.fg-queue__item {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr);
+  gap: var(--fg-space-2) var(--fg-space-3);
+  padding: var(--fg-space-3) var(--fg-space-4);
+  border-bottom: 1px solid var(--fg-border-subtle);
+  color: inherit;
+}
+
+.fg-queue__item:last-child {
+  border-bottom: 0;
+}
+
+a.fg-queue__item:hover {
+  background: var(--fg-bg-table-hover);
+  color: inherit;
+}
+
+.fg-queue__time {
+  font-family: var(--fg-font-mono);
+  font-size: var(--fg-text-body-sm);
+  font-variant-numeric: tabular-nums;
+  color: var(--fg-text-secondary);
+  line-height: 1.3;
+}
+
+/* 队列按等得久排序，跨日时必须能看出是哪天，否则读成乱序 */
+.fg-queue__d {
+  display: block;
+  font-size: var(--fg-text-caption);
+  color: var(--fg-text-tertiary);
+}
+
+.fg-queue__main {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--fg-space-2);
+  flex-wrap: wrap;
+}
+
+/* 队列内容分两组：组内不断行，组间可换行。
+   「S1 紧急 A-03」不该被拆开，「待接警 01:23」也不该被拆开。 */
+.fg-queue__lead,
+.fg-queue__tail {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--fg-space-2);
+  min-width: 0;
+}
+
+.fg-queue__tail {
+  margin-left: auto;
+}
+
+.fg-queue__loc {
+  color: var(--fg-text-primary);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fg-queue__person {
+  color: var(--fg-text-tertiary);
+  font-size: var(--fg-text-body-sm);
+}
+
+.fg-queue__wait {
+  margin-left: auto;
+  color: var(--fg-danger-700);
+  font-family: var(--fg-font-mono);
+  font-size: var(--fg-text-body-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.fg-devices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--fg-space-3);
+}
+
+.fg-device {
+  flex: 1 1 240px;
+  min-width: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--fg-space-3);
+  padding: var(--fg-space-3) var(--fg-space-4);
+  background: var(--fg-bg-surface);
+  border: 1px solid var(--fg-border-default);
+  border-radius: var(--fg-radius-sm);
+}
+
+.fg-device__dot {
+  width: 8px;
+  height: 8px;
+  margin-top: 7px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--fg-success-600);
+}
+
+.fg-device.is-offline .fg-device__dot {
+  background: var(--fg-danger-600);
+}
+
+.fg-device__main {
+  min-width: 0;
+  flex: 1;
+}
+
+.fg-device__code {
+  font-family: var(--fg-font-mono);
+  font-size: var(--fg-text-body-sm);
+  font-weight: 600;
+  color: var(--fg-text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fg-device__loc {
+  color: var(--fg-text-secondary);
+  font-size: var(--fg-text-body-sm);
+  line-height: var(--fg-leading-body-sm);
+}
+
+.fg-device__meta {
+  margin-top: 2px;
+  color: var(--fg-text-tertiary);
+  font-size: var(--fg-text-caption);
+  line-height: var(--fg-leading-caption);
+  font-variant-numeric: tabular-nums;
+}
+
+/* --------------------------------------------------------------------------
+   11. 筛选栏 / 表单控件
+   -------------------------------------------------------------------------- */
+.fg-filters {
+  grid-column: span 12;
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: var(--fg-space-3);
+  min-height: 72px;
+  padding: var(--fg-space-4) 0;
+  border-bottom: 1px solid var(--fg-border-default);
+}
+
+.fg-filters__spacer {
+  margin-left: auto;
+}
+
+/* 按钮组永远靠右收尾：放得下就在同一行右端，放不下就独占最后一行右端。
+   没有这条，7~8 个筛选字段一换行，[筛选][重置] 会停在新行的第 5 格中间。 */
+.fg-filters > .fg-field:last-child {
+  margin-left: auto;
+}
+
+/* 那一行的占位标签（&nbsp; 对齐用）在按钮独占一行时只会变成一条空白带 */
+.fg-filters > .fg-field:last-child > .fg-label {
+  display: none;
+}
+
+/* 2026-11-06 九改：面板**体内**的筛选条（点位与画面）。
+   上面那套 .fg-filters 是给「页面级通栏一行」写的：min-height 72、上下各 16 留白、
+   grid-column span 12。原样塞进面板体里会白吃一大条竖空间，这里只收紧留白、保留分隔线。
+   ⚠️ 面板内的末位是 .fg-filters__tail 不是 .fg-field，上面那条 :last-child 靠右规则管不到，
+      所以 tail 自己带 margin-left:auto。 */
+.fg-filters--panel {
+  grid-column: auto;
+  align-items: flex-end;
+  gap: var(--fg-space-3);
+  min-height: 0;
+  padding: 0 0 var(--fg-space-3);
+  margin-bottom: var(--fg-space-3);
+}
+
+/* 输入框是 width:100%，不显式给宽度会按内容塌成一条 */
+.fg-filters--panel > .fg-field:first-child {
+  flex: 1 1 220px;
+  max-width: 300px;
+}
+
+.fg-filters--panel > .fg-field {
+  flex: 0 0 132px;
+}
+
+.fg-filters__tail {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--fg-space-2);
+  padding-bottom: 2px;
+}
+
+.fg-filter__count {
+  font-size: var(--fg-text-body-sm);
+  line-height: var(--fg-leading-body-sm);
+  color: var(--fg-text-tertiary);
+  white-space: nowrap;
+}
+
+.fg-filter__count b {
+  color: var(--fg-text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 「没有符合筛选条件的点位」——比整块 empty_state 轻，不把卡片区撑开 */
+.fg-empty-inline {
+  margin: 0;
+  padding: var(--fg-space-8) 0;
+  text-align: center;
+  font-size: var(--fg-text-body-sm);
+  color: var(--fg-text-tertiary);
+}
+
+.fg-tabs {
+  display: flex;
+  align-items: stretch;
+  gap: var(--fg-space-1);
+  border-bottom: 1px solid var(--fg-border-default);
+  overflow-x: auto;
+}
+
+.fg-tab {
+  position: relative;
+  height: 44px;
+  padding: 0 var(--fg-space-3);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  background: transparent;
+  color: var(--fg-text-tertiary);
+  font-size: var(--fg-text-body-sm);
+  font-weight: 600;
+  white-space: nowrap;
+  border-bottom: 2px solid transparent;
+}
+
+.fg-tab:hover {
+  color: var(--fg-text-primary);
+  background: var(--fg-bg-table-hover);
+}
+
+.fg-tab.is-active {
+  color: var(--fg-primary);
+  border-bottom-color: var(--fg-primary);
+}
+
+.fg-tab__count {
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--fg-radius-xs);
+  background: var(--fg-neutral-100);
+  color: var(--fg-text-secondary);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.fg-tab.is-active .fg-tab__count {
+  background: var(--fg-pine-100);
+  color: var(--fg-pine-700);
+}
+
+.fg-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--fg-space-2);
+  min-width: 0;
+}
+
+.fg-label {
+  font-size: var(--fg-text-body-sm);
+  line-height: var(--fg-leading-body-sm);
+  font-weight: 600;
+  color: var(--fg-text-secondary);
+}
+
+.fg-label__req {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-left: 4px;
+  vertical-align: 2px;
+  background: var(--fg-danger-600);
+}
+
+.fg-input,
+.fg-select,
+.fg-textarea {
+  width: 100%;
+  height: 40px;
+  padding: 0 var(--fg-space-3);
+  border: 1px solid var(--fg-border-control);
+  border-radius: var(--fg-radius-xs);
+  background: var(--fg-bg-raised);
+  color: var(--fg-text-primary);
+  font-size: var(--fg-text-body-sm);
+  line-height: 24px;
+}
+
+.fg-select {
+  appearance: none;
+  padding-right: 32px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%235C6B65' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+}
+
+.fg-textarea {
+  height: auto;
+  min-height: 96px;
+  padding: var(--fg-space-2) var(--fg-space-3);
+  resize: vertical;
+}
+
+.fg-input::placeholder,
+.fg-textarea::placeholder {
+  color: var(--fg-text-tertiary);
+}
+
+.fg-input:focus,
+.fg-select:focus,
+.fg-textarea:focus {
+  outline: 2px solid var(--fg-border-focus);
+  outline-offset: 1px;
+  border-color: var(--fg-border-focus);
+}
+
+.fg-input:disabled,
+.fg-select:disabled,
+.fg-textarea:disabled {
+  background: var(--fg-bg-canvas);
+  color: var(--fg-text-disabled);
+  border-color: var(--fg-border-default);
+}
+
+.fg-field--inline {
+  flex-direction: row;
+  align-items: center;
+  gap: var(--fg-space-2);
+}
+
+.fg-field--grow {
+  flex: 1 1 240px;
+}
+
+.fg-hint {
+  color: var(--fg-text-tertiary);
+  font-size: var(--fg-text-caption);
+  line-height: var(--fg-leading-caption);
+}
+
+.fg-error-text {
+  color: var(--fg-danger-700);
+  font-size: var(--fg-text-body-sm);
+  line-height: var(--fg-leading-body-sm);
+}
+
+.fg-search-inline {
+  position: relative;
+  min-width: 240px;
+  height: 40px;
+}
+
+.fg-search-inline .fg-search__input {
+  padding-left: 36px;
+}
+
+/* 单选 / 复选（方形，不用胶囊） */
+.fg-choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--fg-space-2);
+}
+
+.fg-choice {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--fg-space-2);
+  min-height: 40px;
+  padding: 0 var(--fg-space-3);
+  border: 1px solid var(--fg-border-control);
+  border-radius: var(--fg-radius-xs);
+  background: var(--fg-bg-raised);
+  color: var(--fg-text-secondary);
+  font-size: var(--fg-text-body-sm);
+  cursor: pointer;
+}
+
+.fg-choice input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.fg-choice__box {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  border: 1px solid var(--fg-border-control);
+  border-radius: var(--fg-radius-xs);
+  background: var(--fg-neutral-0);
+}
+
+.fg-choice input:checked + .fg-choice__box {
+  background: var(--fg-primary);
+  border-color: var(--fg-primary);
+  box-shadow: inset 0 0 0 3px var(--fg-neutral-0);
+}
+
+.fg-choice:has(input:checked) {
+  border-color: var(--fg-primary);
+  color: var(--fg-text-primary);
+  background: var(--fg-pine-50);
+}
+
+.fg-choice input:focus-visible + .fg-choice__box {
+  outline: 2px solid var(--fg-border-focus);
+  outline-offset: 2px;
+}
+
+/* P12 · 分配负责区域（2026-11-05 第90轮重做）。
+   整行可选的竖排清单：复用 .fg-choice（40px 行 / 自绘方框 / 选中态 / 焦点环），
+   .fg-choice 默认是 inline-flex，不铺满就会被 <ul> 缩成文字那么宽。 */
+.fg-checklist {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--fg-space-2);
+  /* 区域多的时候（一个病区十几二十个）弹窗不能无限长，超了就自己滚。 */
+  max-height: 320px;
+  overflow-y: auto;
+  /* 弹窗里的内层滚动区：滚到底不许把后面那层弹窗/整页一起带着滚。
+     房内 5 处 overflow-y:auto 都配了这句，这里原来漏了。 */
+  overscroll-behavior: contain;
+}
+
+.fg-checklist > li {
+  margin: 0;
+}
+
+.fg-choice--block {
+  display: flex;
+  width: 100%;
+  padding: var(--fg-space-3);
+}
+
+/* 名字吃掉剩余宽度，把「已停用」标签顶到右边缘。 */
+.fg-choice--block .fg-choice__label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* ⚠️ 标签不许被长区域名挤扁换行 —— 名字可以折，徽标不能。 */
+.fg-choice--block .fg-tag {
+  flex-shrink: 0;
+}
+
+/* 已停用且护士本来没有的：置灰、不可新勾（disabled 由模板脚本在开窗时打）。
+   ⚠️ 已经分过的**不加** disabled —— 得让人能取消，见模板里的注释。 */
+.fg-choice--block:has(input:disabled) {
+  background: var(--fg-neutral-100);
+  border-color: var(--fg-border-default);
+  color: var(--fg-text-tertiary);
+  cursor: not-allowed;
+}
+
+/* 抬头一行：左边「谁 · 已选 N / M」，右边全选 / 清空。 */
+.fg-zone-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--fg-space-3);
+  margin-bottom: var(--fg-space-3);
+}
+
+.fg-zone-head .fg-modal__text {
+  margin: 0;
+}
+
+.fg-zone-count {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: var(--fg-text-primary);
+}
+
+.fg-zone-bulk {
+  display: flex;
+  gap: var(--fg-space-1);
+  flex-shrink: 0;
+}
+
+/* --------------------------------------------------------------------------
+   12. 表格（表头 48 / 行 56 / 无斑马纹）
+   -------------------------------------------------------------------------- */
+.fg-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+  background: var(--fg-bg-surface);
+  border: 1px solid var(--fg-border-default);
+  border-radius: var(--fg-radius-sm);
+}
+
+.fg-table {
+  width: 100%;
+  min-width: 760px;
+  /* 15px 不在字号阶梯上（阶梯只有 12/14/16/20/24/32），
+     整站表格统一到 body-sm，行高跟着走 token。 */
+  font-size: var(--fg-text-body-sm);
+  line-height: var(--fg-leading-body-sm);
+}
+
+.fg-table thead th {
+  height: var(--fg-table-head-h);
+  padding: 0 var(--fg-space-3);
+  background: var(--fg-bg-table-head);
+  border-bottom: 1px solid var(--fg-border-default);
+  color: var(--fg-text-secondary);
+  font-size: var(--fg-text-body-sm);
+  line-height: var(--fg-leading-body-sm);
+  font-weight: 600;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.fg-table tbody td {
+  height: var(--fg-table-row-h);
+  padding: 0 var(--fg-space-3);
+  border-bottom: 1px solid var(--fg-border-subtle);
+  color: var(--fg-text-primary);
+  vertical-align: middle;
+}
+
+.fg-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.fg-table tbody tr:hover {
+  background: var(--fg-bg-table-hover);
+}
+
+.fg-table tbody tr[data-detail-url] {
+  cursor: pointer;
+}
+
+.fg-table tbody tr[data-detail-url]:focus-visible {
+  outline: 2px solid var(--fg-border-focus);
+  outline-offset: -2px;
+}
+
+.fg-table tbody tr.is-retracted {
+  color: var(--fg-text-tertiary);
+}
+
+.fg-table tbody tr.is-retracted td {
+  color: var(--fg-text-tertiary);
+}
+
+.fg-table .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.fg-table .fg-mono,
+.fg-table__uid {
+  font-family: var(--fg-font-mono);
+  font-size: var(--fg-text-body-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.fg-table__uid {
+  color: var(--fg-text-secondary);
+  white-space: nowrap;
+}
+
+/* 台账时间列：日期常驻 + 时间加粗两行。
+   只给时分秒的话，跨日之后 12:55 后面跟着 22:31，读起来像排序坏了。 */
+.fg-table__time {
+  line-height: 1.3;
+}
+
+.fg-table__date {
+  display: block;
+  font-size: var(--fg-text-caption);
+  color: var(--fg-text-tertiary);
+}
+
+.fg-table__hm {
+  display: block;
+  font-size: var(--fg-text-body-sm);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.fg-table__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--fg-space-2);
+  white-space: nowrap;
+}
+
+.fg-table__empty td {
+  height: auto;
+  padding: 0;
+}
+
+.fg-table__empty:hover {
+  background: transparent !important;
+}
+
+.fg-table caption {
+  text-align: left;
+  padding: var(--fg-space-2) var(--fg-space-3);
+  color: var(--fg-text-tertiary);
+  font-size: var(--fg-text-body-sm);
+}
+
+/* --------------------------------------------------------------------------
+   13. 分页
+   -------------------------------------------------------------------------- */
+.fg-pager {
+  grid-column: span 12;
+  min-height: 64px;
+  display: flex;
+  align-items: center;
+  gap: var(--fg-space-3);
+  flex-wrap: wrap;
+  color: var(--fg-text-tertiary);
+  font-size: var(--fg-text-body-sm);
+}
+
+.fg-pager__total {
+  margin-right: auto;
+  font-variant-numeric: tabular-nums;
+}
+
+.fg-pager__pages {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.fg-pager__btn,
+.fg-pager__num {
+  min-width: 36px;
+  height: 36px;
+  padding: 0 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--fg-border-default);
+  border-radius: var(--fg-radius-xs);
+  background: var(--fg-bg-surface);
+  color: var(--fg-text-secondary);
+  font-size: var(--fg-text-body-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.fg-pager__btn:hover,
+.fg-pager__num:hover {
+  background: var(--fg-bg-table-hover);
+  color: var(--fg-text-primary);
+}
+
+.fg-pager__num.is-current {
+  background: var(--fg-primary);
+  border-color: var(--fg-primary);
+  color: var(--fg-text-inverse);
+}
+
+.fg-pager__num.is-current:hover {
+  background: var(--fg-primary);
+  color: var(--fg-text-inverse);
+}
+
+.fg-pager__gap {
+  padding: 0 4px;
+  /* 「…」表示还有更多页，是信息不是禁用控件 */
+  color: var(--fg-text-tertiary);
+}
+
+.fg-pager__size {
+  color: var(--fg-text-tertiary);
+}
+
+/* --------------------------------------------------------------------------
+   14. 抽屉
+   -------------------------------------------------------------------------- */
+.fg-drawer-root {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+}
+
+.fg-drawer-overlay {
+  position: absolute;
+  inset: 0;
+  background: var(--fg-bg-overlay);
+  animation: fg-fade-in var(--fg-motion-base) var(--fg-ease-out);
+}
+
+.fg-drawer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: var(--fg-drawer-w);
+  max-width: 100vw;
+  display: flex;
+  flex-direction: column;
+  background: var(--fg-bg-surface);
+  border-left: 1px solid var(--fg-border-strong);
+  box-shadow: var(--fg-shadow-drawer);
+  animation: fg-slide-in var(--fg-motion-base) var(--fg-ease-out);
+}
+
+.fg-drawer--wide {
+  width: var(--fg-drawer-w-wide);
+}
+
+.fg-drawer__head {
+  min-height: 72px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--fg-space-3);
+  padding: var(--fg-space-4) var(--fg-space-5);
+  border-bottom: 1px solid var(--fg-border-default);
+  background: var(--fg-bg-surface);
+}
+
+.fg-drawer__head-main {
+  min-width: 0;
+  flex: 1;
+}
+
+.fg-drawer__title {
+  font-size: var(--fg-text-h3);
+  line-height: var(--fg-leading-h3);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fg-drawer__sub {
+  margin-top: 2px;
+  color: var(--fg-text-tertiary);
+  font-size: var(--fg-text-body-sm);
+  line-height: var(--fg-leading-body-sm);
+}
+
+.fg-drawer__close {
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid transparent;
+  border-radius: var(--fg-radius-sm);
+  background: transparent;
+  color: var(--fg-text-secondary);
+}
+
+.fg-drawer__close:hover {
+  background: var(--fg-bg-table-hover);
+  color: var(--fg-text-primary);
+}
+
+.fg-drawer__body {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--fg-space-5);
+  /* 抽屉是浮层，内层滚到底不许把后面那层页面一起带着弹（房内 5 处
+     overflow-y:auto 都配了这句，这里原来漏了 —— 2026-11-06 十改顺手补）。 */
+  overscroll-behavior: contain;
+}
+
+.fg-drawer__foot {
+  min-height: 72px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--fg-space-3);
+  padding: var(--fg-space-4) var(--fg-space-5);
+  border-top: 1px solid var(--fg-border-default);
+  background: var(--fg-bg-surface);
+}
+
+.fg-drawer__foot .fg-btn--primary {
+  margin-left: auto;
+}
+
+@keyframes fg-slide-in {
+  from { transform: translateX(16px); opacity: 0; }
+  to   { transform: translateX(0); opacity: 1; }
+}
+
+@keyframes fg-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* --------------------------------------------------------------------------
+   15. 事件详情（抽屉 / 整页共用）
+   -------------------------------------------------------------------------- */
+.fg-detail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--fg-space-6);
+}
+
+.fg-detail__section {
+  min-width: 0;
+}
+
+.fg-detail__actions {
+  align-items: stretch;
+}
+
+.fg-detail__title {
+  margin-bottom: var(--fg-space-3);
+  font-size: var(--fg-text-body);
+  line-height: var(--fg-leading-body);
+  font-weight: 600;
+  color: var(--fg-text-primary);
+}
+
+.fg-detail__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--fg-space-3) var(--fg-space-5);
+}
+
+.fg-detail__grid--3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+/* 窄容器里的单列变体：证据链那条 aside 只有 1/3 宽，2 列会挤成两行字。
+   （媒体查询只按**屏幕**宽降列，管不到容器窄——这里要的是容器窄。） */
+.fg-detail__grid--1 {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.fg-detail__k {
+  display: block;
+  color: var(--fg-text-tertiary);
+  font-size: var(--fg-text-caption);
+  line-height: var(--fg-leading-caption);
+}
+
+.fg-detail__v {
+  display: block;
+  margin-top: 2px;
+  color: var(--fg-text-primary);
+  font-size: var(--fg-text-body-sm);
+  line-height: var(--fg-leading-body-sm);
+  word-break: break-word;
+}
+
+.fg-detail__v--mono {
+  font-family: var(--fg-font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 双状态并排 */
+.fg-dual {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--fg-space-3);
+  padding: var(--fg-space-3) var(--fg-space-4);
+  background: var(--fg-bg-raised);
+  border: 1px solid var(--fg-border-default);
+  border-radius: var(--fg-radius-sm);
+}
+
+.fg-dual__item {
+  min-width: 0;
+}
+
+.fg-dual__k {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--fg-text-tertiary);
+  font-size: var(--fg-text-caption);
+  line-height: var(--fg-leading-caption);
+}
+
+/* 时间线 */
+.fg-timeline {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--fg-space-3);
+  padding-left: var(--fg-space-4);
+  border-left: 1px solid var(--fg-border-default);
+}
+
+.fg-timeline__item {
+  position: relative;
+}
+
+.fg-timeline__item::before {
+  content: "";
+  position: absolute;
+  left: calc(-1 * var(--fg-space-4) - 4px);
+  top: 7px;
+  width: 7px;
+  height: 7px;
+  background: var(--fg-bg-surface);
+  border: 1px solid var(--fg-border-strong);
+}
+
+.fg-timeline__item--done::before {
+  background: var(--fg-primary);
+  border-color: var(--fg-primary);
+}
+
+.fg-timeline__time {
+  font-family: var(--fg-font-mono);
+  font-size: var(--fg-text-caption);
+  line-height: var(--fg-leading-caption);
+  color: var(--fg-text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+.fg-timeline__text {
+  color: var(--fg-text-primary);
+  font-size: var(--fg-text-body-sm);
+  line-height: var(--fg-leading-body-sm);
+}
+
+.fg-timeline__text strong {
+  font-weight: 600;
+}
+
+.fg-timeline__note {
+  margin-top: 2px;
+  color: var(--fg-text-tertiary);
+  font-size: var(--fg-text-caption);
+  line-height: var(--fg-leading-caption);
+}
+
+/* 拒绝 / 失败的结果要能在一条流水里被一眼挑出来（信息科首页「最近操作」用）。
+   只加粗变色，不套 tag —— tag 有 24px 最小高度，会把整条流水撑虚。 */
+.fg-timeline__note .is-bad {
+  color: var(--fg-danger-700);
+  font-weight: 600;
+}
+
+/* 技术详情折叠 */
+.fg-details {
+  border: 1px solid var(--fg-border-default);
+  border-radius: var(--fg-radius-xs);
+  background: var(--fg-bg-raised);
+}
+
+.fg-details__summary {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  gap: var(--fg-space-2);
+  padding: 0 var(--fg-space-3);
+  cursor: pointer;
+  color: var(--fg-text-secondary);
+  font-size: var(--fg-text-body-sm);
+  font-weight: 600;
+  list-style: none;
+}
+
+.fg-details__summary::-webkit-details-marker {
+  display: none;
+}
+
+.fg-details__summary::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-right: 1px solid currentColor;
+  border-bottom: 1px solid currentColor;
+  transform: rotate(-45deg);
+  transition: transform var(--fg-motion-fast) var(--fg-ease-out);
+}
+
+.fg-details[open] > .fg-details__summary::before {
+  transform: rotate(45deg);
+}
+
+.fg-details__body {
+  padding: var(--fg-space-3);
+  border-top: 1px solid var(--fg-border-subtle);
+}
+
+/* --------------------------------------------------------------------------
+   16. 弹窗
+   -------------------------------------------------------------------------- */
+.fg-modal-root {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: grid;
+  place-items: center;
+  padding: var(--fg-space-4);
+}
+
+.fg-modal-root[hidden] {
+  display: none;
+}
+
+.fg-modal-overlay {
+  position: absolute;
+  inset: 0;
+  background: var(--fg-bg-overlay);
+}
+
+.fg-modal {
+  position: relative;
+  width: var(--fg-modal-w);
+  max-width: 100%;
+  max-height: calc(100vh - 64px);
+  display: flex;
+  flex-direction: column;
+  background: var(--fg-bg-raised);
+  border: 1px solid var(--fg-border-default);
+  border-radius: var(--fg-radius-sm);
+  box-shadow: var(--fg-shadow-modal);
+}
+
+.fg-modal--wide {
+  width: var(--fg-modal-w-wide);
+}
+
+.fg-modal__head {
+  min-height: 64px;
+  display: flex;
+  align-items: center;
+  gap: var(--fg-space-3);
+  padding: var(--fg-space-3) var(--fg-space-5);
+  border-bottom: 1px solid var(--fg-border-subtle);
+}
+
+.fg-modal__title {
+  flex: 1;
+  font-size: var(--fg-text-h3);
+  line-height: var(--fg-leading-h3);
+  font-weight: 600;
+}
+
+.fg-modal__body {
+  padding: var(--fg-space-5);
+  overflow-y: auto;
+}
+
+.fg-modal__foot {
+  min-height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--fg-space-3);
+  padding: var(--fg-space-3) var(--fg-space-5);
+  border-top: 1px solid var(--fg-border-subtle);
+}
+
+.fg-modal__text {
+  color: var(--fg-text-secondary);
+  font-size: var(--fg-text-body-sm);
+  line-height: var(--fg-leading-body-sm);
+}
+
+/* --------------------------------------------------------------------------
+   17. 空态 / 骨架屏 / 错误块
+   -------------------------------------------------------------------------- */
+.fg-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--fg-space-2);
+  padding: var(--fg-space-12) var(--fg-space-6);
+  text-align: center;
+  color: var(--fg-text-tertiary);
+}
+
+.fg-empty__icon {
+  width: 48px;
+  height: 48px;
+  margin-bottom: var(--fg-space-2);
+  color: var(--fg-neutral-400);
+}
+
+.fg-empty__title {
+  font-size: var(--fg-text-body-lg);
+  line-height: var(--fg-leading-body-lg);
+  font-weight: 600;
+  color: var(--fg-text-secondary);
+}
+
+.fg-empty__desc {
+  max-width: 480px;
+  font-size: var(--fg-text-body-sm);
+  line-height: var(--fg-leading-body-sm);
+}
+
+.fg-empty__action {
+  margin-top: var(--fg-space-3);
+}
+
+/* 2026-11-11 删除：骨架屏 6 条规则 + @keyframes fg-pulse（它只被 .fg-skeleton 消费）。
+   全库实测 0 消费者（templates / static/*.js / *.py 里都没有 fg-skeleton），是死 CSS。
+   要用回来从版本库找，别照着旧记忆重加。 */
+
+.fg-error-block {
+  display: flex;
+  align-items: center;
+  gap: var(--fg-space-3);
+  padding: var(--fg-space-4);
+  background: var(--fg-danger-50);
+  border: 1px solid var(--fg-danger-100);
+  border-radius: var(--fg-radius-sm);
+  color: var(--fg-danger-700);
+  font-size: var(--fg-text-body-sm);
+}
+
+.fg-error-block__main {
+  flex: 1;
+  min-width: 0;
+}
+
+/* --------------------------------------------------------------------------
+   18. 24 小时柱状图（纯 CSS，无图表库）
+   -------------------------------------------------------------------------- */
+.fg-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  height: 200px;
+  padding: var(--fg-space-3) 0 0;
+  border-bottom: 1px solid var(--fg-border-default);
+}
+
+.fg-bars__col {
+  position: relative;
+  flex: 1;
+  height: 100%;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  min-width: 0;
+}
+
+.fg-bars__bar {
+  width: 100%;
+  max-width: 28px;
+  min-height: 2px;
+  background: var(--fg-pine-600);
+}
+
+.fg-bars__bar[data-count="0"] {
+  background: var(--fg-neutral-200);
+}
+
+.fg-bars__col:hover .fg-bars__bar {
+  background: var(--fg-pine-800);
+}
+
+/* 单轴：00/06/12/18/24 五等分。柱子均分 24 格，25% 处正好是 06:00。
+   以前的 __tick 把 00/04/08 再挂在柱底、溢出到盒子外 24px，于是同一根轴上
+   有两套对不齐的刻度——删掉，只留这一条。 */
+.fg-bars__axis {
+  display: flex;
+  justify-content: space-between;
+  margin-top: var(--fg-space-2);
+  color: var(--fg-text-tertiary);
+  font-size: var(--fg-text-caption);
+  font-variant-numeric: tabular-nums;
+}
+
+.fg-handlers {
+  display: flex;
+  flex-direction: column;
+}
+
+.fg-handler {
+  display: flex;
+  align-items: center;
+  gap: var(--fg-space-2);
+  min-height: 44px;
+  padding: 0 var(--fg-space-5);
+  border-bottom: 1px solid var(--fg-border-subtle);
+}
+
+.fg-handler:last-child {
+  border-bottom: 0;
+}
+
+.fg-handler__name {
+  font-weight: 600;
+  color: var(--fg-text-primary);
+}
+
+.fg-handler__count {
+  margin-left: auto;
+  color: var(--fg-text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+.fg-note {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--fg-space-2);
+  padding: var(--fg-space-3) var(--fg-space-4);
+  border: 1px solid var(--fg-border-default);
+  border-radius: var(--fg-radius-xs);
+  background: var(--fg-bg-raised);
+  color: var(--fg-text-tertiary);
+  font-size: var(--fg-text-body-sm);
+  line-height: var(--fg-leading-body-sm);
+}
+
+.fg-note svg {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.fg-note--warn {
+  background: var(--fg-warning-50);
+  border-color: var(--fg-warning-100);
+  color: var(--fg-warning-700);
+}
+
+.fg-note--danger {
+  background: var(--fg-danger-50);
+  border-color: var(--fg-danger-100);
+  color: var(--fg-danger-700);
+}
+
+/* --------------------------------------------------------------------------
+   19. Toast
+   -------------------------------------------------------------------------- */
+.fg-toast-root {
+  position: fixed;
+  right: var(--fg-space-6);
+  bottom: var(--fg-space-6);
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  gap: var(--fg-space-2);
+  max-width: 420px;
+}
+
+.fg-toast {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--fg-space-2);
+  padding: var(--fg-space-3) var(--fg-space-4);
+  background: var(--fg-neutral-900);
+  border: 1px solid var(--fg-neutral-800);
+  border-radius: var(--fg-radius-sm);
+  color: var(--fg-text-inverse);
+  font-size: var(--fg-text-body-sm);
+  line-height: var(--fg-leading-body-sm);
+  box-shadow: var(--fg-shadow-popover);
+  animation: fg-toast-in var(--fg-motion-base) var(--fg-ease-out);
+}
+
+.fg-toast--ok {
+  background: var(--fg-success-700);
+  border-color: var(--fg-success-700);
+}
+
+.fg-toast--error {
+  background: var(--fg-danger-700);
+  border-color: var(--fg-danger-700);
+}
+
+.fg-toast--warn {
+  background: var(--fg-warning-700);
+  border-color: var(--fg-warning-700);
+}
+
+.fg-toast__icon {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.fg-toast__main {
+  min-width: 0;
+}
+
+@keyframes fg-toast-in {
+  from { transform: translateY(6px); opacity: 0; }
+  to   { transform: translateY(0); opacity: 1; }
+}
+
+/* --------------------------------------------------------------------------
+   20. 登录页（左右 56 / 44）
+   -------------------------------------------------------------------------- */
+.fg-login {
+  /* 100dvh：移动端浏览器地址栏收起/展开时 100vh 会让整页跳一下。
+     保留 vh 那行给不认识 dvh 的老浏览器兜底。 */
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: grid;
+  grid-template-columns: 56% 44%;
+  background: var(--fg-bg-surface);
+}
+
+.fg-login__brand {
+  /* 左栏只有这一根轴：徽标、标语、闭环、落款全部内缩 --fg-login-pad。 */
+  --fg-login-pad: var(--fg-space-14);
+  position: relative;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  overflow: hidden;
+  /* 深绿底分三层，不是一个平色（"大面积纯色 = 没做完"）：
+     ① 底：从控制台侧栏那一档（--fg-bg-nav #0B2B26）斜着压到 pine-800/900 ——
+        登录页和登进去以后是**同一套绿**，不是另外发明的一版；
+     ② 环境光：.fg-login__aurora，24s 缓慢漂移的柔光；
+     ③ 颗粒：::after 那层极淡噪点，破掉大面积平色的"数字感"。
+     ⚠️ ②③ 都是 pointer-events:none 的纯装饰层，不参与任何交互。 */
+  background: linear-gradient(158deg,
+    var(--fg-bg-nav) 0%,
+    var(--fg-pine-800) 62%,
+    var(--fg-pine-900) 100%);
+  color: var(--fg-text-nav);
+}
+
+/* 颗粒。SVG feTurbulence 内联成 data URI —— 不引任何外部图片文件
+   （服务器出网 4.78 Mbps，登录页不该为一张噪点图多发一个请求）。
+   ⚠️ 必须画在内容下面：定位元素会盖住静态内容，所以内容块统一 z-index:1。 */
+.fg-login__brand::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: .13;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='150' height='150'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.82' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='150' height='150' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* 环境光：一块柔光在左上方极慢地来回漂。它只负责让这页"是活的"，
+   不负责让人注意到它 —— 所以位移很小、对比很低。 */
+.fg-login__aurora {
+  position: absolute;
+  z-index: 0;
+  top: -22%;
+  left: -16%;
+  width: 82%;
+  height: 66%;
+  border-radius: 50%;
+  pointer-events: none;
+  background: radial-gradient(closest-side,
+    rgba(127, 184, 168, .20) 0%,
+    rgba(127, 184, 168, .06) 55%,
+    rgba(127, 184, 168, 0) 100%);
+  animation: fgLoginDrift 26s var(--fg-ease-in-out) infinite alternate;
+}
+
+/* 内容块统一抬到装饰层之上 —— 只有这一处，别在每个子元素上重复写 */
+.fg-login__brand-top,
+.fg-login__hero,
+.fg-login__meta {
+  position: relative;
+  z-index: 1;
+}
+
+/* hero = 主张 + 闭环面板。
+   ⚠️ 这里**不**用 flex:1 + justify-content:center 去居中整列 —— 那个写法在
+      内容比视口高的（比如 1440×600 的横屏笔记本）会把顶部内容裁掉且滚不到。
+      改用「首尾 auto 外边距」：.fg-login__brand-top 吃 margin-top:auto、
+      .fg-login__meta 吃 margin-bottom:auto，多出来的高度就在这两处平分。
+      有空隙 ⇒ 整列居中；内容溢出 ⇒ auto 自动算成 0，从顶部正常排。 */
+.fg-login__hero {
+  flex: 0 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.fg-login__brand-top {
+  display: flex;
+  align-items: center;
+  gap: var(--fg-space-3);
+  padding: var(--fg-space-14) var(--fg-login-pad) 0;
+  margin-top: auto;   /* 居中用的上半边，见 .fg-login__hero 的说明 */
+}
+
+.fg-login__logo {
+  width: 40px;
+  height: 40px;
+  color: var(--fg-pine-200);
+}
+
+.fg-login__wordmark {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.2;
+}
+
+.fg-login__wordmark strong {
+  font-size: var(--fg-text-h2);
+  line-height: var(--fg-leading-h2);
+  color: var(--fg-text-inverse);
+  letter-spacing: .02em;
+}
+
+.fg-login__wordmark span {
+  font-size: var(--fg-text-caption);
+  letter-spacing: .18em;
+  color: var(--fg-text-nav-muted);
+}
+
+/* 主张。字号**刻意超过 --fg-text-display（48px）**：设计审查里
+   「标题缺少存在感」是最常见的一条，大字是这半屏唯一的重音。
+   ⚠️ 字体栈不动：本项目不引中文 webfont（中文子集 2–5MB，
+      会和实时画面抢那 4.78 Mbps 出网带宽，见 tokens.css 的说明）。
+      这一条**有意偏离**"换个有个性的字体"的通用建议。 */
+.fg-login__tagline {
+  /* 和品牌行之间要留出这一段 —— hero 不再自带 padding，
+     不留的话 66px 的主张会直接顶在「衡护 HENGUARD」下面。
+     整列的竖直居中由首尾 auto 外边距负责，跟这里无关。 */
+  margin: var(--fg-space-10) var(--fg-login-pad) 0;
+  max-width: 620px;
+  font-size: clamp(40px, 4.6vw, 66px);
+  line-height: 1.08;
+  font-weight: 700;
+  color: var(--fg-text-inverse);
+  letter-spacing: -0.035em;
+  /* 窄屏（左栏被压到 ~420px）会折成「病区跌倒 / 监护」——
+     balance 让两行长度接近，不出现「监护」孤零零一行。 */
+  text-wrap: balance;
+}
+
+/* ---------- 处置闭环 ----------
+   四步一个灯，一条轨道连着，一颗光点沿线走。
+   步宽 flex:1 ⇒ 四个灯心分别落在 12.5% / 37.5% / 62.5% / 87.5%，
+   所以轨道与光点的定位全用这几个数，是算出来的、不是试出来的。 */
+/* 闭环面板。外边距和内边距都挂在 loopbox 上，ol 本身必须保持零内边距 ——
+   轨道/光点的 left:12.5% 是按 ol 的内边距盒算的（原因见 login.html 那段警告）。 */
+.fg-login__loopbox {
+  margin: var(--fg-space-12) var(--fg-login-pad) 0;
+  padding: var(--fg-space-6) var(--fg-space-6) var(--fg-space-6);
+  max-width: 620px;
+  border: 1px solid rgba(214, 233, 226, .12);
+  border-radius: 14px;
+  background: rgba(214, 233, 226, .035);
+}
+
+/* 面板的小标题。和底部「系统状态」同一套规格（黄铜 + 拉字距 + 12px），
+   两处一致，别各写一套。 */
+.fg-login__loop-k {
+  margin: 0 0 var(--fg-space-5);
+  color: var(--fg-brass);
+  font-size: var(--fg-text-caption);
+  font-weight: 600;
+  letter-spacing: .16em;
+}
+
+.fg-login__loop {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.fg-login__step {
+  position: relative;
+  z-index: 1;          /* 灯压在轨道之上 */
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--fg-space-3);
+}
+
+.fg-login__lamp {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--fg-login-lamp);
+  /* 只描一圈同色阴影把灯珠"托"起来（box-shadow 被下面的动画占用，
+     所以这里用 filter —— 两者互不覆盖）。 */
+  filter: drop-shadow(0 0 5px rgba(11, 43, 38, .9));
+  animation: fgLoginLamp 5.6s var(--fg-ease-in-out) infinite;
+}
+
+/* 四个灯取五态色阶里现成的四个 —— 不新配色：
+   检测=在线安静 · 告警=待处置 · 处置=已确认 · 归档=已解决。
+   ⚠️ 这里画的是**流程**，不是实时告警，所以没有一个是常亮红 ——
+      护士还没登录就看见一片红会以为病区出事了。 */
+.fg-login__lamp--detect { --fg-login-lamp: var(--fg-doorlight-idle); }
+.fg-login__lamp--alert  { --fg-login-lamp: var(--fg-status-pending-dot); }
+.fg-login__lamp--ack    { --fg-login-lamp: var(--fg-status-ack-dot); }
+.fg-login__lamp--closed { --fg-login-lamp: var(--fg-status-resolved-dot); }
+
+.fg-login__step-label {
+  font-size: var(--fg-text-caption);
+  line-height: var(--fg-leading-caption);
+  letter-spacing: .08em;
+  color: var(--fg-text-nav-muted);
+}
+
+.fg-login__rail {
+  position: absolute;
+  top: 7px;            /* 灯心：灯高 14px */
+  left: 12.5%;
+  right: 12.5%;
+  height: 1px;
+  /* 比 --fg-border-nav（.14）亮一档：那是"面板上的分隔线"，
+     这里是画面里的**一条轨道**，要看得出来是把四步连起来的。
+     同色同相（pine-100），只是不透明度不同。 */
+  background: rgba(214, 233, 226, .22);
+}
+
+/* 光点。
+   ⚠️ 这里**有意**动画 `left` 而不是 transform —— 通行的规矩是"位移一律走
+      transform/opacity"，但那种写法要求事先知道轨道有多少 px，而它是弹性的。
+      这颗点只有 7px、单元素、常驻循环，代价可以忽略；换成 transform 得靠 JS 量宽，
+      为一个装饰点引 JS 不划算。**这是权衡后的例外，不是没注意到那条规矩。** */
+.fg-login__pulse {
+  position: absolute;
+  top: 7px;
+  left: 12.5%;
+  width: 8px;
+  height: 8px;
+  margin: -4px 0 0 -4px;
+  border-radius: 50%;
+  background: var(--fg-pine-100);
+  /* 辉光是 pine-100/200 的低透明版：token 是实色 hex，拿不到 alpha，只能写 rgba。
+     色相**只有一个来源** —— 改 pine-100/200 要同步改这两行。 */
+  box-shadow:
+    0 0 10px 2px rgba(175, 212, 200, .55),
+    0 0 22px 6px rgba(175, 212, 200, .22);
+  animation: fgLoginPulse 5.6s linear infinite;
+}
+
+/* 读数用等宽：3/3、时间戳位数对齐，刷新时不跳字宽 */
+.fg-login__num {
+  font-family: var(--fg-font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- 登录页动效 ----------
+   ⚠️ 不给任何一个动画单独写 `prefers-reduced-motion` 分支 ——
+      app.css 3649 行那条全局 media query 会把 animation/transition 的时长
+      压到 .001ms，这里五个动画全都自动被兜住。**别再造第二份。** */
+
+/* 进场：分四拍升起（品牌 → 主张 → 闭环 → 落款）。
+   "Never mount everything at once" —— 一次全出现就没有节奏。 */
+@keyframes fgLoginRise {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.fg-login__brand-top,
+.fg-login__tagline,
+.fg-login__loopbox,
+.fg-login__meta {
+  animation: fgLoginRise 560ms var(--fg-ease-out) both;
+}
+.fg-login__brand-top { animation-delay: 60ms; }
+.fg-login__tagline  { animation-delay: 150ms; }
+.fg-login__loopbox  { animation-delay: 260ms; }
+.fg-login__meta     { animation-delay: 380ms; }
+
+/* 环境光漂移。位移很小是刻意的：它的任务是"这页活着"，不是抢戏。 */
+@keyframes fgLoginDrift {
+  from { transform: translate3d(0, 0, 0) scale(1); }
+  to   { transform: translate3d(9%, 7%, 0) scale(1.12); }
+}
+
+/* 光点走一遍轨道（5.6s）。
+   0–7% 淡入、89–100% 淡出，是为了藏住"走到底又跳回起点"那一下。 */
+@keyframes fgLoginPulse {
+  0%   { left: 12.5%; opacity: 0; }
+  7%   { opacity: 1; }
+  89%  { opacity: 1; }
+  100% { left: 87.5%; opacity: 0; }
+}
+
+/* 灯被光点扫到时亮一下（外圈扩散的光环）。
+   延迟 = 每个灯心被扫到的时刻：0 / 1.4 / 2.8 / 4.2s。
+   光环统一用 pine-100 的低透明版，**不按灯色分别给** —— 四个彩色光环
+   会同时亮四种颜色，太吵；颜色语义已经由灯珠本身承担了。 */
+@keyframes fgLoginLamp {
+  0%   { box-shadow: 0 0 0 0 rgba(214, 233, 226, .30); }
+  6%   { box-shadow: 0 0 0 6px rgba(214, 233, 226, .30); }
+  20%  { box-shadow: 0 0 0 6px rgba(214, 233, 226, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(214, 233, 226, 0); }
+}
+.fg-login__step:nth-child(1) .fg-login__lamp { animation-delay: 0s; }
+.fg-login__step:nth-child(2) .fg-login__lamp { animation-delay: 1.4s; }
+.fg-login__step:nth-child(3) .fg-login__lamp { animation-delay: 2.8s; }
+.fg-login__step:nth-child(4) .fg-login__lamp { animation-delay: 4.2s; }
+
+/* .fg-login__desc（「告警、处置、台账在同一条时间线上。」）2026-11-04 删除：
+   那句话没有出处，左栏主张下面不需要再补一句解释。 */
+
+.fg-login__rule {
+  width: 96px;
+  height: 2px;
+  margin: var(--fg-space-8) 0;
+  background: var(--fg-brass);
+}
+
+.fg-login__meta {
+  /* 居中用的下半边（不是 margin-top:auto —— 那个会在闭环面板和状态块之间
+     裂开一道空档，正是 1440×900 实测到的问题）。手机档另有覆盖。 */
+  margin-bottom: auto;
+  padding: var(--fg-space-10) var(--fg-login-pad) var(--fg-space-12);
+  display: flex;
+  flex-direction: column;
+  gap: var(--fg-space-2);
+  font-size: var(--fg-text-body-sm);
+  line-height: var(--fg-leading-body-sm);
+  color: var(--fg-text-nav-muted);
+}
+
+/* 状态灯。和闭环面板里的灯同规格（这里 10px，因为它是列表不是主角）。
+   让它**缓慢呼吸** —— 这是登录页上唯一活着的实时信号，
+   呼吸读作"系统在跑"，不是装饰。 */
+.fg-login__dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--fg-success-600);
+  /* 光晕 = 同色低透明；实色 token 拿不到 alpha，只能写 rgba。
+     色相只有一个来源：改 --fg-success-600 要同步改这一行。 */
+  box-shadow: 0 0 0 3px rgba(46, 125, 79, .16);
+  animation: fgLoginLive 3.2s var(--fg-ease-in-out) infinite;
+}
+
+/* 离线才红 —— 这是登录页上**唯一**允许出现的红（见 login.html 的警告） */
+.fg-login__dot--off {
+  background: var(--fg-danger-600);
+  box-shadow: 0 0 0 3px rgba(198, 60, 50, .18);
+}
+
+/* 两个灯错开半拍，免得同时明暗看着像在闪 */
+.fg-login__status-item:nth-child(2) .fg-login__dot {
+  animation-delay: 1.6s;
+}
+
+@keyframes fgLoginLive {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: .42; }
+}
+
+/* 「系统状态」落款（2026-11-04 取代原来的班次牌 + 时间脊）
+   下面这几行是登录页上唯一的实时事实：设备到底在不在。给它一条黄铜短线
+   和一个字距拉开的小标签，是为了让这块从「散落的灰字」变成有边界的落款——
+   左栏下半部分本来就空着，正好把空用在这。 */
+.fg-login__meta .fg-login__rule {
+  margin: 0 0 var(--fg-space-3);
+}
+
+.fg-login__status-k {
+  margin-bottom: var(--fg-space-3);
+  color: var(--fg-brass);
+  font-size: var(--fg-text-caption);
+  font-weight: 600;
+  letter-spacing: .16em;
+}
+
+.fg-login__status {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--fg-space-2);
+}
+
+/* 值班前要确认的东西，不该是页面上最小的字 ⇒ body 16px（原 body-sm 14px） */
+.fg-login__status-item {
+  display: flex;
+  align-items: center;
+  gap: var(--fg-space-3);
+  color: var(--fg-text-nav);
+  font-size: var(--fg-text-body);
+  line-height: var(--fg-leading-body);
+}
+
+/* 上次登录是「参考」，不是「状态」——压一档，别和网关/摄像头抢同级 */
+.fg-login__status-item--quiet {
+  color: var(--fg-text-nav-muted);
+}
+
+.fg-login__formside {
+  min-width: 0;
+  display: grid;
+  /* ⚠️ 必须显式写列，不能只靠 place-items:center。
+     不写列定义时是一条 `auto` 轨道，`auto` 按**卡片的 max-content** 定尺寸，
+     根本不理会容器只有 387px ⇒ 卡片（448）直接顶穿右栏，
+     而卡片的 `max-width:100%` **永远够不着**（它的百分比是按那条被撑开的轨道算的）。
+     1024×768 实测：卡片 right=1049 > 视口 1024，整页横向溢出 25px。
+     写成 minmax(0,1fr) 后列宽 = 容器宽，max-width:100% 才真正生效。
+     （这是 2026-11-11 给卡片加内边距时暴露出来的老问题，不是那次改动引入的。） */
+  grid-template-columns: minmax(0, 1fr);
+  place-items: center;
+  padding: var(--fg-space-10) var(--fg-space-8);
+  /* 不是一块平米色：右上角一团极淡的松针光，和左栏的环境光是同一招。
+     对比很低（.10 量级就够），只负责让右半屏不"空"。 */
+  background:
+    radial-gradient(120% 85% at 88% 6%,
+      rgba(127, 184, 168, .10) 0%,
+      rgba(127, 184, 168, 0) 62%),
+    var(--fg-bg-surface);
+}
+
+.fg-login__card {
+  /* ⚠️ 448 = 400 内容宽 + 24×2 内边距。**内容盒必须正好 400px**：
+     .fg-login__notes 那两条说明是按 400 − 16(图标) − 8(间距) = 376px 定死的
+     （190px / 224px 各占一整行）。加内边距就必须同时加宽度，否则那两条折行。
+     动这个数之前先读 notes 上面那段注释。 */
+  width: 448px;
+  max-width: 100%;
+  padding: var(--fg-space-6);
+  background: var(--fg-bg-raised);
+  border: 1px solid var(--fg-border-subtle);
+  border-radius: 12px;   /* 2026-11-11 用户同意登录页放宽 V1 的 0/2/4 限制 */
+  /* 阴影带底色的色相（松针墨 #0B2B26），不是纯黑低透明 ——
+     纯黑阴影压在白卡上会发灰，带色相才"落"得住这块米底。
+     两层：一层贴边定轮廓，一层大范围给体积。 */
+  box-shadow:
+    0 1px 2px rgba(11, 43, 38, .06),
+    0 14px 36px rgba(11, 43, 38, .10);
+  animation: fgLoginRise 620ms var(--fg-ease-out) 120ms both;
+}
+
+.fg-login__title {
+  font-size: var(--fg-text-h1);
+  line-height: var(--fg-leading-h1);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+/* .fg-login__sub（「账号由护士长分配，角色随账号确定。」）2026-11-04 删除。 */
+
+.fg-login__form {
+  margin-top: var(--fg-space-8);
+  display: flex;
+  flex-direction: column;
+  gap: var(--fg-space-4);
+}
+
+.fg-login__field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--fg-space-2);
+  /* 两个字段错拍浮现（比卡片再晚一拍）—— 一次全出现就没有节奏 */
+  animation: fgLoginRise 460ms var(--fg-ease-out) both;
+}
+
+.fg-login__field:nth-of-type(1) { animation-delay: 300ms; }
+.fg-login__field:nth-of-type(2) { animation-delay: 380ms; }
+
+.fg-login__label {
+  font-size: var(--fg-text-body-sm);
+  line-height: var(--fg-leading-body-sm);
+  font-weight: 600;
+  color: var(--fg-text-secondary);
+  transition: color var(--fg-motion-base) var(--fg-ease-out);
+}
+
+/* 聚焦时标签跟着变色 —— 让"焦点在这一栏"多一处线索，不只靠输入框边框 */
+.fg-login__field:focus-within .fg-login__label {
+  color: var(--fg-pine-600);
+}
+
+.fg-login__inputwrap {
+  position: relative;
+}
+
+.fg-login__input {
+  width: 100%;
+  height: 48px;
+  padding: 0 var(--fg-space-4);
+  border: 1px solid var(--fg-border-control);
+  border-radius: 8px;    /* 登录页放宽版；V1 全局仍是 2px */
+  background: var(--fg-bg-raised);
+  font-size: var(--fg-text-body);
+  transition: border-color var(--fg-motion-base) var(--fg-ease-out),
+              box-shadow var(--fg-motion-base) var(--fg-ease-out);
+}
+
+.fg-login__input:hover {
+  border-color: var(--fg-border-strong);
+}
+
+/* 聚焦发光。**没有动 outline** —— 全局 :focus-visible 那条
+   （2px solid --fg-border-focus）是键盘用户的焦点环，不能拿它换美观；
+   这里只是在那之上再加一层柔光，两者叠加共存。 */
+.fg-login__input:focus {
+  border-color: var(--fg-border-focus);
+  box-shadow: 0 0 0 3px rgba(14, 90, 78, .14);
+}
+
+.fg-login__input--with-eye {
+  padding-right: 72px;
+}
+
+.fg-login__eye {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  height: 40px;
+  padding: 0 var(--fg-space-2);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 0;
+  border-radius: var(--fg-radius-xs);
+  background: transparent;
+  color: var(--fg-text-tertiary);
+  font-size: var(--fg-text-body-sm);
+  transition: background-color var(--fg-motion-fast) var(--fg-ease-out),
+              color var(--fg-motion-fast) var(--fg-ease-out);
+}
+
+.fg-login__eye:hover {
+  background: var(--fg-bg-table-hover);
+  color: var(--fg-text-primary);
+}
+
+.fg-login__submit {
+  width: 100%;
+  height: 48px;
+  margin-top: var(--fg-space-2);
+  font-size: var(--fg-text-body-lg);
+  border-radius: 8px;
+  /* 全局 .fg-btn 的 transition 只管颜色；这里补上位移和阴影才不会"跳" */
+  transition: background-color var(--fg-motion-fast) var(--fg-ease-out),
+              border-color var(--fg-motion-fast) var(--fg-ease-out),
+              color var(--fg-motion-fast) var(--fg-ease-out),
+              transform var(--fg-motion-fast) var(--fg-ease-out),
+              box-shadow var(--fg-motion-fast) var(--fg-ease-out);
+  box-shadow: 0 1px 2px rgba(11, 43, 38, .10);
+}
+
+.fg-login__submit:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 20px rgba(11, 43, 38, .18);
+}
+
+/* 按压。⚠️ 下沉量（1px）要**小于**悬停抬起量（1px 抬 + 阴影变大），
+   否则按下去会像先弹起来一下。这里同时把阴影收回贴边态，读作"按实了"。 */
+.fg-login__submit:active {
+  transform: translateY(1px);
+  box-shadow: 0 1px 2px rgba(11, 43, 38, .12);
+}
+
+/* 报错抖动。只在**可见**时报（:not([hidden])）：
+   JS 那条错误是从 hidden 变可见的，选择器随之开始匹配 ⇒ 动画自然重新触发，
+   不需要 js 那边加任何 class。 */
+.fg-login__error:not([hidden]) {
+  animation: fgLoginShake 420ms var(--fg-ease-in-out) both;
+}
+
+@keyframes fgLoginShake {
+  0%, 100% { transform: translateX(0); }
+  15%      { transform: translateX(-5px); }
+  32%      { transform: translateX(4px); }
+  50%      { transform: translateX(-3px); }
+  68%      { transform: translateX(2px); }
+  85%      { transform: translateX(-1px); }
+}
+
+/* 底部三条说明：一个列表，不是「一个段落 + 另一个段落 + 又一个段落」。
+   改前是两条独立的 <p>，各带 margin-top:16px ⇒ 「表单→说明一」和「说明一→说明二」
+   的间距一样大，读起来像互不相干的版块。外边距交给外层 .fg-login__notes，
+   组内只剩 8px，这几条才成立为**一组**。 */
+.fg-login__notes {
+  margin: var(--fg-space-4) 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--fg-space-2);
+}
+
+.fg-login__note {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--fg-space-2);
+  color: var(--fg-text-tertiary);
+  font-size: var(--fg-text-body-sm);
+  line-height: var(--fg-leading-body-sm);
+}
+
+/* balance 是给**窄屏**留的：卡片收窄到正文放不下一句时，别把最后两三个字
+   甩成孤行。宽屏下每句都放得下，balance 是空操作。
+   ⚠️ 只加在**正文**（> span）上：整条 flex 做 balance 会把图标也算进行长。
+   ⚠️ 别指望它解决「一句话太长」：整句 414px 放不进 376px 时，balance 会把断点
+   拉到正中间（204/210），切在「…15 分」/「钟。忘记…」之间 —— 那比孤字更难看。
+   这种情况要**拆句子**（2026-11-04 第78轮就是这么处理的），不是调 balance。 */
+.fg-login__note > span {
+  text-wrap: balance;
+}
+
+/* 图标列固定 16px 且不许压缩 —— 各条的正文左边缘才会严丝合缝。
+   （flex 子项默认会缩，窄屏先缩图标，正文就往左跑 1–2px，肉眼看得出来。）
+   锁用警告色（真会被锁 15 分钟）；钥匙与盾都是**说明**（怎么办 / 隐私声明
+   都不是警报），走 --quiet 用中性色。 */
+.fg-login__note svg {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  margin-top: 3px;
+  color: var(--fg-warning-600);
+}
+
+.fg-login__note--quiet svg {
+  color: var(--fg-text-tertiary);
+}
+
+.fg-login__error {
+  padding: var(--fg-space-3) var(--fg-space-4);
+  background: var(--fg-danger-50);
+  border: 1px solid var(--fg-danger-100);
+  border-radius: var(--fg-radius-xs);
+  color: var(--fg-danger-700);
+  font-size: var(--fg-text-body-sm);
+  line-height: var(--fg-leading-body-sm);
+}
+
+.fg-login__notice {
+  padding: var(--fg-space-3) var(--fg-space-4);
+  background: var(--fg-warning-50);
+  border: 1px solid var(--fg-warning-100);
+  border-radius: var(--fg-radius-xs);
+  color: var(--fg-warning-700);
+  font-size: var(--fg-text-body-sm);
+  line-height: var(--fg-leading-body-sm);
+}
+
+/* --------------------------------------------------------------------------
+   21. 人员与账号 / 一次性密码
+   -------------------------------------------------------------------------- */
+.fg-tabs--page {
+  border-bottom: 1px solid var(--fg-border-default);
+  margin-bottom: var(--fg-space-4);
+}
+
+.fg-onetime {
+  display: flex;
+  flex-direction: column;
+  gap: var(--fg-space-3);
+}
+
+.fg-onetime__code {
+  display: flex;
+  align-items: center;
+  gap: var(--fg-space-3);
+  padding: var(--fg-space-3) var(--fg-space-4);
+  background: var(--fg-neutral-100);
+  border: 1px solid var(--fg-border-strong);
+  border-radius: var(--fg-radius-xs);
+}
+
+.fg-onetime__code code {
+  flex: 1;
+  font-family: var(--fg-font-mono);
+  font-size: var(--fg-text-h3);
+  line-height: var(--fg-leading-h3);
+  letter-spacing: .06em;
+  word-break: break-all;
+}
+
+/* --------------------------------------------------------------------------
+   22. 错误页
+   -------------------------------------------------------------------------- */
+.fg-errorpage {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: var(--fg-space-6);
+  background: var(--fg-bg-canvas);
+}
+
+.fg-errorpage__card {
+  width: 560px;
+  max-width: 100%;
+  padding: var(--fg-space-10);
+  background: var(--fg-bg-surface);
+  border: 1px solid var(--fg-border-default);
+  border-radius: var(--fg-radius-sm);
+}
+
+.fg-errorpage__brand {
+  display: flex;
+  align-items: center;
+  gap: var(--fg-space-2);
+  color: var(--fg-text-tertiary);
+  font-size: var(--fg-text-body-sm);
+  font-weight: 600;
+  letter-spacing: .04em;
+}
+
+.fg-errorpage__brand svg {
+  width: 24px;
+  height: 24px;
+  color: var(--fg-primary);
+}
+
+.fg-errorpage__code {
+  margin-top: var(--fg-space-6);
+  font-family: var(--fg-font-mono);
+  /* 64/72 超出阶梯最大级，且 #C7D1CB 对卡片底只有 1.49:1——连大号字的 3:1 都不到，
+     等于把「404」印成了一张几乎看不见的水印。 */
+  font-size: var(--fg-text-display);
+  line-height: var(--fg-leading-display);
+  /* 同 .fg-kpi__value：Plex Mono 没有 700 字面，700 是合成假粗 */
+  font-weight: 600;
+  color: var(--fg-text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+.fg-errorpage__title {
+  font-size: var(--fg-text-h2);
+  line-height: var(--fg-leading-h2);
+  font-weight: 700;
+}
+
+.fg-errorpage__desc {
+  margin-top: var(--fg-space-2);
+  color: var(--fg-text-tertiary);
+  font-size: var(--fg-text-body);
+  line-height: var(--fg-leading-body);
+}
+
+.fg-errorpage__meta {
+  margin-top: var(--fg-space-3);
+  color: var(--fg-text-tertiary);
+  font-size: var(--fg-text-body-sm);
+}
+
+.fg-errorpage__actions {
+  margin-top: var(--fg-space-6);
+  display: flex;
+  gap: var(--fg-space-3);
+  flex-wrap: wrap;
+}
+
+/* --------------------------------------------------------------------------
+   23. 通用工具类
+   -------------------------------------------------------------------------- */
+.fg-icon {
+  flex-shrink: 0;
+}
+
+.fg-mono {
+  font-family: var(--fg-font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.fg-muted { color: var(--fg-text-tertiary); }
+.fg-nowrap { white-space: nowrap; }
+.fg-break { word-break: break-all; }
+.fg-small { font-size: var(--fg-text-body-sm); line-height: var(--fg-leading-body-sm); }
+.fg-strong { font-weight: 600; }
+.fg-mt-2 { margin-top: var(--fg-space-2); }
+.fg-mt-3 { margin-top: var(--fg-space-3); }
+.fg-mt-4 { margin-top: var(--fg-space-4); }
+.fg-mt-6 { margin-top: var(--fg-space-6); }
+.fg-mb-4 { margin-bottom: var(--fg-space-4); }
+
+/* 相对时间超过阈值时的颜色提示（JS 添加） */
+.is-warn { color: var(--fg-warning-700); }
+.is-danger { color: var(--fg-danger-700); }
+.fg-flex { display: flex; }
+.fg-flex-between { display: flex; align-items: center; justify-content: space-between; }
+.fg-gap-2 { gap: var(--fg-space-2); }
+.fg-gap-3 { gap: var(--fg-space-3); }
+.fg-w-100 { width: 100%; }
+.fg-text-right { text-align: right; }
+.fg-hide { display: none !important; }
+
+.fg-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* --------------------------------------------------------------------------
+   24. 响应式
+   -------------------------------------------------------------------------- */
+
+/* 1280–1599：与 ≥1600 同构，仅略收页面留白 */
+@media (max-width: 1599px) {
+  .fg-kpis--5 {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+}
+
+/* 1024–1279：导航收 80px，KPI 2 列，主栅格堆叠 */
+@media (max-width: 1279px) {
+  .fg-main {
+    margin-left: var(--fg-nav-w-collapsed);
+  }
+
+  .fg-nav {
+    width: var(--fg-nav-w-collapsed);
+  }
+
+  .fg-nav__brand {
+    height: 88px;
+    justify-content: center;
+    padding: 0;
+  }
+
+  .fg-nav__wordmark,
+  .fg-nav__userinfo,
+  .fg-nav__badge {
+    display: none;
+  }
+
+  /* 文字视觉收起但保留可访问名：display:none 会让 80px 导航变成一排无名图标 */
+  .fg-nav__text {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+
+  /* 这一档导航已被响应式强制收起，按钮没有意义 */
+  .fg-nav__collapse {
+    display: none;
+  }
+
+  .fg-nav__link {
+    justify-content: center;
+    padding: 0;
+    margin: 2px var(--fg-space-2);
+  }
+
+  .fg-nav__link.is-active::before {
+    position: absolute;
+    left: 4px;
+  }
+
+  .fg-nav__user {
+    justify-content: center;
+    padding: 0;
+  }
+
+  .fg-nav__logout {
+    display: none;
+  }
+
+  .fg-page {
+    padding-left: var(--fg-space-6);
+    padding-right: var(--fg-space-6);
+  }
+
+  .fg-topbar__inner {
+    padding: 0 var(--fg-space-6);
+  }
+
+  .fg-kpis,
+  .fg-kpis--5 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .fg-split {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .fg-col-8,
+  .fg-col-4,
+  .fg-col-6,
+  .fg-col-3 {
+    grid-column: span 12;
+  }
+
+  .fg-topbar__ward {
+    display: none;
+  }
+}
+
+/* 768–1023：导航变抽屉，单列，表格横向滚动 */
+@media (max-width: 1023px) {
+  .fg-main {
+    margin-left: 0;
+  }
+
+  .fg-nav {
+    width: var(--fg-nav-w);
+    transform: translateX(-100%);
+    transition: transform var(--fg-motion-base) var(--fg-ease-out);
+    box-shadow: var(--fg-shadow-drawer);
+  }
+
+  .fg-nav__wordmark,
+  .fg-nav__text,
+  .fg-nav__userinfo,
+  .fg-nav__badge {
+    display: flex;
+  }
+
+  .fg-nav__text {
+    display: block;
+  }
+
+  /* 抽屉里文字要真正看得见：把 1024–1279 的「视觉隐藏但保留可访问名」还原 */
+  .fg-nav__text {
+    position: static;
+    width: auto;
+    height: auto;
+    overflow: visible;
+    clip: auto;
+    white-space: normal;
+  }
+
+  .fg-nav__brand {
+    justify-content: flex-start;
+    padding: 0 var(--fg-space-6);
+  }
+
+  .fg-nav__link {
+    justify-content: flex-start;
+    padding: 0 var(--fg-space-4);
+  }
+
+  .fg-nav__user {
+    justify-content: flex-start;
+    padding: 0 var(--fg-space-4);
+  }
+
+  .fg-nav__logout {
+    display: inline-flex;
+  }
+
+  .fg-shell.is-nav-open .fg-nav {
+    transform: translateX(0);
+  }
+
+  .fg-nav__scrim {
+    position: fixed;
+    inset: 0;
+    z-index: 45;
+    display: none;
+    background: var(--fg-bg-overlay);
+  }
+
+  .fg-shell.is-nav-open .fg-nav__scrim {
+    display: block;
+  }
+
+  .fg-navtoggle {
+    display: inline-flex;
+  }
+
+  .fg-search {
+    width: 200px;
+  }
+
+  .fg-page {
+    padding-left: var(--fg-space-4);
+    padding-right: var(--fg-space-4);
+  }
+
+  .fg-topbar__inner {
+    padding: 0 var(--fg-space-4);
+  }
+
+  .fg-banner {
+    padding-left: var(--fg-space-4);
+    padding-right: var(--fg-space-4);
+  }
+
+  .fg-page-head {
+    flex-direction: column;
+    gap: var(--fg-space-3);
+  }
+
+  .fg-page-actions {
+    padding-top: 0;
+    width: 100%;
+  }
+
+  .fg-kpis,
+  .fg-kpis--5 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .fg-filters {
+    align-items: stretch;
+  }
+
+  .fg-filters .fg-field {
+    flex: 1 1 180px;
+  }
+
+  .fg-drawer {
+    width: 100vw;
+  }
+
+  .fg-login {
+    grid-template-columns: 1fr;
+  }
+
+  .fg-login__brand {
+    /* 单栏堆叠时改的是那**一根轴**，不是各块的 padding */
+    --fg-login-pad: var(--fg-space-6);
+  }
+
+  .fg-login__brand-top {
+    padding-top: var(--fg-space-8);
+  }
+
+  .fg-login__tagline {
+    margin-top: var(--fg-space-6);
+    font-size: var(--fg-text-h1);
+    line-height: var(--fg-leading-h1);
+  }
+
+  .fg-login__loopbox {
+    margin-top: var(--fg-space-8);
+  }
+
+  .fg-login__meta {
+    margin-top: var(--fg-space-6);
+    padding-bottom: var(--fg-space-8);
+  }
+
+  .fg-login__formside {
+    padding: var(--fg-space-8) var(--fg-space-4);
+  }
+}
+
+/* <768：KPI 单列，隐藏次要信息，抽屉全屏，底部操作条 */
+@media (max-width: 767px) {
+  .fg-topbar__inner {
+    gap: var(--fg-space-2);
+  }
+
+  .fg-search,
+  .fg-usermenu__meta,
+  .fg-status span:not(.fg-status__dot) {
+    display: none;
+  }
+
+  .fg-page-title {
+    font-size: var(--fg-text-h2);
+    line-height: var(--fg-leading-h2);
+  }
+
+  .fg-kpis,
+  .fg-kpis--5 {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--fg-space-3);
+  }
+
+  .fg-kpi__value {
+    font-size: var(--fg-text-h1);
+    line-height: var(--fg-leading-h1);
+  }
+
+  .fg-alert {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .fg-alert__side {
+    order: -1;
+  }
+
+  .fg-alert__side .fg-snap {
+    width: 100%;
+    max-width: 200px;
+  }
+
+  .fg-alert__wait {
+    margin-left: 0;
+  }
+
+  .fg-detail__grid,
+  .fg-detail__grid--3,
+  .fg-dual {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .fg-drawer__foot {
+    position: sticky;
+    bottom: 0;
+    flex-wrap: wrap;
+  }
+
+  .fg-drawer__foot .fg-btn {
+    flex: 1 1 auto;
+  }
+
+  .fg-drawer__foot .fg-btn--primary {
+    min-height: 56px;
+    margin-left: 0;
+  }
+
+  /* 移动端：详情里的处置动作变成底部固定条 */
+  .fg-detail__actions {
+    position: sticky;
+    bottom: 0;
+    z-index: 5;
+    flex-wrap: wrap;
+    padding: var(--fg-space-3) 0;
+    background: var(--fg-bg-surface);
+    border-top: 1px solid var(--fg-border-default);
+  }
+
+  .fg-detail__actions .fg-btn {
+    flex: 1 1 auto;
+    min-height: 48px;
+  }
+
+  .fg-toast-root {
+    left: var(--fg-space-4);
+    right: var(--fg-space-4);
+    bottom: var(--fg-space-4);
+    max-width: none;
+  }
+
+  .fg-login__brand {
+    --fg-login-pad: var(--fg-space-4);
+  }
+
+  .fg-login__brand-top {
+    padding-top: var(--fg-space-6);
+  }
+
+  .fg-login__tagline {
+    font-size: var(--fg-text-h2);
+    line-height: var(--fg-leading-h2);
+  }
+
+  .fg-login__loopbox {
+    margin-top: var(--fg-space-6);
+    padding: var(--fg-space-4);
+  }
+
+  .fg-errorpage__card {
+    padding: var(--fg-space-6);
+  }
+
+  .fg-errorpage__code {
+    font-size: 48px;
+    line-height: 56px;
+  }
+
+  .fg-bars {
+    gap: 3px;
+    height: 160px;
+  }
+
+  .fg-bars__tick {
+    display: none;
+  }
+}
+
+/* 减少动效偏好 */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: .001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   实时画面（V1.1）
+   默认只渲染占位，**不建立任何网络连接**；点「播放」才按需加载 hls.js 并拉流。
+   mediamtx 配了 hlsAlwaysRemux=false ⇒ 没人看时上游根本不产数据，
+   所以"页面上有播放器"本身不占出网带宽。
+   ══════════════════════════════════════════════════════════════════════════ */
+#live-panel .fg-panel__body {
+  padding: 0;
+}
+
+/* 16:9 跟着容器走，不用固定高度。
+   之前是 height: clamp(200px,34vh,420px) —— 宽屏下 16:9 被塞进 420px 高的盒子，
+   上下贴满、左右各留一大片黑边。
+   max-width 用 vh 反算：短屏上先缩宽、再保持比例，缩出来的边距是页面底色不是黑边。
+   ⚠️ .fg-live 必须与视频画面同框——叠加层的 canvas 定位是以它为准算的。 */
+.fg-live {
+  position: relative;
+  width: 100%;
+  max-width: 124vh;
+  margin-inline: auto;
+  aspect-ratio: 16 / 9;
+  background: var(--fg-bg-video);
+  overflow: hidden;
+}
+
+/* 播放中的实时角标 */
+.fg-live__live {
+  position: absolute;
+  top: var(--fg-space-3);
+  left: var(--fg-space-3);
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px;
+  border-radius: var(--fg-radius-sm);
+  background: rgba(8, 28, 25, .72);
+  color: var(--fg-pine-50);
+  font-size: var(--fg-text-caption);
+  line-height: 18px;
+  pointer-events: none;
+}
+
+.fg-live__pulse {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--fg-danger-600);
+  animation: fg-live-pulse 2s var(--fg-ease-in-out) infinite;
+}
+
+.fg-live__tk {
+  font-family: var(--fg-font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+@keyframes fg-live-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: .3; transform: scale(.7); }
+}
+
+/* 骨架叠加层（P9 ADR-11）。left/top/width/height 由 JS 按 contain 的内容区算，
+   这里只负责定位与不吃鼠标事件（否则挡着播放控件点不到）。 */
+.fg-live__canvas {
+  position: absolute;
+  display: none;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.fg-live.is-playing .fg-live__canvas {
+  display: block;
+}
+
+/* 叠加开关条：只在播放时出现，与视频同宽（.fg-live 在短屏上会用 max-width 收窄） */
+.fg-live__overlay-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  max-width: 124vh;
+  margin-inline: auto;
+  gap: var(--fg-space-3);
+  padding: var(--fg-space-2) var(--fg-space-3);
+  border-top: 1px solid var(--fg-neutral-200);
+  font-size: var(--fg-text-caption);
+}
+
+.fg-live__opt {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--fg-neutral-700);
+  cursor: pointer;
+  user-select: none;
+}
+
+.fg-live__opt--lat {
+  cursor: default;
+}
+
+.fg-live__opt--lat input[type="range"] {
+  width: 110px;
+  vertical-align: middle;
+}
+
+.fg-live__video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: var(--fg-bg-video);
+}
+
+.fg-live__ph {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 24px;
+  text-align: center;
+  color: var(--fg-neutral-200);
+}
+
+.fg-live__badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  border: 1px solid rgba(255, 255, 255, .18);
+  border-radius: var(--fg-radius-xs);
+  background: rgba(255, 255, 255, .06);
+  font-size: var(--fg-text-caption);
+  letter-spacing: .02em;
+}
+
+.fg-live__hint {
+  max-width: 46ch;
+  margin: 0;
+  font-size: var(--fg-text-body-sm);
+  line-height: 1.7;
+  color: rgba(237, 241, 238, .66);
+}
+
+.fg-live__hint strong {
+  color: var(--fg-warning-600);
+  font-weight: 600;
+}
+
+.fg-live__state {
+  position: absolute;
+  left: 16px;
+  bottom: 16px;
+  max-width: calc(100% - 32px);
+  padding: 8px 14px;
+  border-radius: var(--fg-radius-sm);
+  /* 半透明底叠在深色视频上：视频帧亮度不可控，实色会盖掉太多画面 */
+  background: rgba(11, 43, 38, .86);
+  color: var(--fg-neutral-0);
+  font-size: var(--fg-text-caption);
+  backdrop-filter: blur(6px);
+}
+
+.fg-live__state[data-kind="error"] {
+  background: rgba(180, 35, 24, .92);
+}
+
+/* 播放中：占位让位，视频铺满 */
+.fg-live.is-playing .fg-live__ph {
+  display: none;
+}
+
+
+/* ══════════════════════════════════════════════════════════════════════════
+   跌倒告警弹窗（P9 ②）
+   SSE `event.created` → app.js 填充并显示；页面在后台时不弹窗，改发系统通知。
+   桌面居中卡片，≤767px 变底部抽屉（拇指可达、不遮住安全区）。
+   z-index 130 高于既有 .fg-modal-root(120)：告警要压住用户正在填的表单。
+   ══════════════════════════════════════════════════════════════════════════ */
+.fg-alarmpop {
+  position: fixed;
+  inset: 0;
+  z-index: 130;
+  display: grid;
+  place-items: center;
+  padding: var(--fg-space-4);
+}
+
+.fg-alarmpop[hidden] {
+  display: none;
+}
+
+.fg-alarmpop__overlay {
+  position: absolute;
+  inset: 0;
+  /* 比 --fg-bg-overlay(.40) 更重：告警要压得住底下的界面 */
+  background: rgba(11, 19, 16, .52);
+  animation: fg-alarmpop-fade var(--fg-motion-base) var(--fg-ease-out);
+}
+
+.fg-alarmpop__card {
+  position: relative;
+  width: 560px;
+  max-width: 100%;
+  max-height: calc(100vh - 64px);
+  display: flex;
+  flex-direction: column;
+  background: var(--fg-bg-raised);
+  border: 1px solid var(--fg-border-default);
+  border-top: 4px solid var(--fg-danger-600);
+  border-radius: var(--fg-radius-sm);
+  box-shadow: var(--fg-shadow-modal);
+  animation: fg-alarmpop-in var(--fg-motion-slow) var(--fg-ease-out);
+}
+
+/* 打开时聚焦卡片本身（不是 ✕ 按钮），否则一弹出就是个突兀的焦点框 */
+.fg-alarmpop__card:focus {
+  outline: none;
+}
+
+.fg-alarmpop[data-sev="S2"] .fg-alarmpop__card { border-top-color: var(--fg-warning-600); }
+.fg-alarmpop[data-sev="S3"] .fg-alarmpop__card { border-top-color: var(--fg-info-600); }
+
+.fg-alarmpop__head {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--fg-space-3);
+  padding: var(--fg-space-4) var(--fg-space-5);
+  border-bottom: 1px solid var(--fg-border-subtle);
+}
+
+.fg-alarmpop__pulse {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--fg-danger-50);
+  color: var(--fg-danger-600);
+  animation: fg-alarmpop-pulse 1.6s var(--fg-ease-in-out) infinite;
+}
+
+.fg-alarmpop[data-sev="S2"] .fg-alarmpop__pulse {
+  background: var(--fg-warning-50);
+  color: var(--fg-warning-600);
+  animation: none;
+}
+
+.fg-alarmpop[data-sev="S3"] .fg-alarmpop__pulse {
+  background: var(--fg-info-50);
+  color: var(--fg-info-600);
+  animation: none;
+}
+
+.fg-alarmpop__headmain {
+  flex: 1;
+  min-width: 0;
+}
+
+.fg-alarmpop__title {
+  margin: 0;
+  font-size: var(--fg-text-h3);
+  line-height: var(--fg-leading-h3);
+  font-weight: 600;
+  color: var(--fg-text-primary);
+}
+
+.fg-alarmpop__sub {
+  margin: 2px 0 0;
+  font-size: var(--fg-text-body-sm);
+  line-height: var(--fg-leading-body-sm);
+  color: var(--fg-text-tertiary);
+}
+
+.fg-alarmpop__close {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  margin: -4px -8px 0 0;
+  padding: 0;
+  border: 0;
+  border-radius: var(--fg-radius-xs);
+  background: transparent;
+  color: var(--fg-text-tertiary);
+  cursor: pointer;
+}
+
+.fg-alarmpop__close:hover {
+  background: var(--fg-neutral-100);
+  color: var(--fg-text-primary);
+}
+
+.fg-alarmpop__body {
+  display: grid;
+  gap: var(--fg-space-4);
+  padding: var(--fg-space-4) var(--fg-space-5);
+  overflow-y: auto;
+}
+
+.fg-alarmpop__media {
+  position: relative;
+  /* 定高不定比：用 aspect-ratio 一旦被 max-height 压住，宽度也会跟着缩，
+     两侧就会露出白边。定高 + object-fit:contain 让黑底始终铺满整行。 */
+  height: min(46vh, 360px);
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border-radius: var(--fg-radius-xs);
+  background: var(--fg-bg-video);
+}
+
+.fg-alarmpop__img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.fg-alarmpop__img[hidden] { display: none; }
+
+.fg-alarmpop__ph {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--fg-space-2);
+  font-size: var(--fg-text-body-sm);
+  line-height: var(--fg-leading-body-sm);
+  color: var(--fg-text-nav-muted);
+  text-align: center;
+  padding: var(--fg-space-4);
+}
+
+.fg-alarmpop__ph[hidden] { display: none; }
+
+.fg-alarmpop__spinner {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid rgba(214, 233, 226, .2);
+  border-top-color: var(--fg-pine-300);
+  animation: fg-alarmpop-spin .8s linear infinite;
+}
+
+.fg-alarmpop__spinner[hidden] { display: none; }
+
+.fg-alarmpop__meta {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--fg-space-2) var(--fg-space-4);
+  margin: 0;
+}
+
+.fg-alarmpop__row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--fg-space-2);
+  min-width: 0;
+}
+
+.fg-alarmpop__row dt {
+  flex: none;
+  font-size: var(--fg-text-caption);
+  line-height: var(--fg-leading-caption);
+  color: var(--fg-text-tertiary);
+}
+
+.fg-alarmpop__row dd {
+  margin: 0;
+  min-width: 0;
+  font-size: var(--fg-text-body-sm);
+  line-height: var(--fg-leading-body-sm);
+  color: var(--fg-text-primary);
+  overflow-wrap: anywhere;
+}
+
+.fg-alarmpop__foot {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--fg-space-3);
+  padding: var(--fg-space-3) var(--fg-space-5);
+  border-top: 1px solid var(--fg-border-subtle);
+}
+
+.fg-alarmpop__queue {
+  margin-right: auto;
+  font-size: var(--fg-text-caption);
+  line-height: var(--fg-leading-caption);
+  color: var(--fg-text-tertiary);
+}
+
+.fg-alarmpop__queue[hidden] { display: none; }
+
+/* 打开/关闭与滚动锁定复用既有 openRoot/closeRoot（§9），这里不再单设 class */
+
+@keyframes fg-alarmpop-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes fg-alarmpop-in {
+  from { opacity: 0; transform: translateY(8px) scale(.985); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes fg-alarmpop-sheet {
+  from { transform: translateY(100%); }
+  to { transform: none; }
+}
+
+@keyframes fg-alarmpop-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(198, 60, 50, .30); }
+  60% { box-shadow: 0 0 0 10px rgba(198, 60, 50, 0); } /* unslop-ignore: 告警弹窗的提示环，不是装饰霓虹；全局 prefers-reduced-motion 已兜底 */
+}
+
+@keyframes fg-alarmpop-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (max-width: 767px) {
+  .fg-alarmpop {
+    place-items: end center;
+    padding: 0;
+  }
+
+  .fg-alarmpop__card {
+    width: 100%;
+    max-height: 92vh;
+    border-left: 0;
+    border-right: 0;
+    border-bottom: 0;
+    border-radius: var(--fg-radius-sm) var(--fg-radius-sm) 0 0;
+    animation: fg-alarmpop-sheet var(--fg-motion-slow) var(--fg-ease-out);
+  }
+
+  .fg-alarmpop__head { padding: var(--fg-space-3) var(--fg-space-4); }
+  .fg-alarmpop__body { padding: var(--fg-space-3) var(--fg-space-4); }
+  .fg-alarmpop__meta { grid-template-columns: 1fr; }
+
+  .fg-alarmpop__foot {
+    padding: var(--fg-space-3) var(--fg-space-4);
+    padding-bottom: calc(var(--fg-space-3) + env(safe-area-inset-bottom, 0px));
+  }
+
+  .fg-alarmpop__foot .fg-btn { flex: 1; }
+  .fg-alarmpop__queue { flex-basis: 100%; margin: 0 0 var(--fg-space-1); }
+}
+
+/* ==========================================================================
+   P0 · 顶栏用户菜单（吸收原「个人设置」页）
+   ========================================================================== */
+/* 卡片头部：姓名 + 角色/病区 + 上次登录。
+   2026-11-04 起这里不再是通往 /me 的链接（页面已删），所以没有 hover 态。 */
+.fg-usermenu__who {
+  padding: var(--fg-space-2) var(--fg-space-3) var(--fg-space-3);
+  margin-bottom: var(--fg-space-1);
+  border-bottom: 1px solid var(--fg-border-subtle);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  text-decoration: none;
+}
+
+.fg-usermenu__whoname {
+  font-size: var(--fg-text-h4);
+  font-weight: 600;
+  line-height: var(--fg-leading-h4);
+  color: var(--fg-text-primary);
+}
+
+.fg-usermenu__whometa {
+  font-size: var(--fg-text-caption);
+  line-height: var(--fg-leading-caption);
+  color: var(--fg-text-tertiary);
+}
+
+/* 提示音开关：label 包 checkbox，整行可点 */
+.fg-usermenu__switch {
+  cursor: pointer;
+  user-select: none;
+}
+
+.fg-usermenu__switch input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--fg-pine-600);
+  flex-shrink: 0;
+}
+
+/* ==========================================================================
+   P0 · 移动端底部 Tab（<768 才出现）
+   ========================================================================== */
+.fg-tabbar {
+  display: none;
+}
+
+.fg-tabbar__item {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 0;
+  height: 56px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  border: 0;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--fg-text-tertiary);
+  font-family: inherit;
+  font-size: var(--fg-text-caption);
+  line-height: 1;
+  text-decoration: none;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* 选中态用一道 2px 顶线，不用色块——底部条要安静，不能和告警抢注意力 */
+.fg-tabbar__item.is-active {
+  color: var(--fg-pine-600);
+  font-weight: 600;
+}
+
+.fg-tabbar__item.is-active::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: 20px;
+  height: 2px;
+  margin-left: -10px;
+  background: var(--fg-pine-600);
+}
+
+.fg-tabbar__item:active {
+  background: var(--fg-bg-table-hover);
+}
+
+.fg-tabbar__badge {
+  position: absolute;
+  top: 4px;
+  left: calc(50% + 2px);
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  border-radius: var(--fg-radius-sm);
+  background: var(--fg-status-pending-dot);
+  color: var(--fg-text-inverse);
+  font-family: var(--fg-font-mono);
+  /* 与顶栏的 .fg-notify__count 对齐：同一个数字不该在底栏小两号 */
+  font-size: var(--fg-text-caption);
+  line-height: 18px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 767px) {
+  .fg-tabbar {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 35;
+    height: calc(56px + env(safe-area-inset-bottom, 0px));
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    display: flex;
+    align-items: stretch;
+    background: var(--fg-bg-raised);
+    border-top: 1px solid var(--fg-border-default);
+  }
+
+  /* 给底部条让位：否则最后一屏内容永远被压在 Tab 底下 */
+  .fg-main {
+    padding-bottom: calc(56px + env(safe-area-inset-bottom, 0px));
+  }
+
+  /* 窄屏页头动作按钮会挤出内容区（390 宽实测向右溢出 ~30px）：
+     允许换行，别让内容区出现横向滚动 */
+  .fg-page-actions {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
+  .fg-toast-root {
+    bottom: calc(56px + env(safe-area-inset-bottom, 0px) + var(--fg-space-4));
+  }
+}
+
+/* ==========================================================================
+   改密页 /settings —— 单一职责的单表单页，内容区居中一张卡
+   2026-11-05 重排：页头大标题/副标题撤掉（副标题「改完会退出登录」本身是错的）、
+   面板头「设置新密码 / 至少 12 个字符」去掉（第二个标题 + 与字段 hint 重复）。
+   原来靠左的 560px 空列（.fg-col--narrow）右边空一大片，改成整列居中 ——
+   12 栏栅格在 flex 下不参与布局，所以这里直接把 .fg-content 换成 flex。
+   ========================================================================== */
+body[data-page="settings"] .fg-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--fg-grid-gap);
+  padding-top: var(--fg-space-6);
+}
+
+/* 首登告警条与卡片同宽同轴，避免「卡片居中、告警贴左」 */
+body[data-page="settings"] .fg-content > * {
+  width: 100%;
+  max-width: 460px;
+}
+
+/* ==========================================================================
+   P1 · 值班白板（原 4 张 KPI 卡压成一条带子）
+   ========================================================================== */
+.fg-whiteboard {
+  display: grid;
+  /* 三项：待处置 / 今日告警 / 设备（2026-11-03 中位响应撤出护士端；
+     2026-11-04「本班告警」改「今日告警」，口径见 main.py `_day_window()`） */
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  background: var(--fg-bg-raised);
+  border: 1px solid var(--fg-border-default);
+  border-radius: var(--fg-radius-sm);
+}
+
+.fg-wb {
+  display: flex;
+  align-items: baseline;
+  gap: var(--fg-space-2);
+  min-width: 0;
+  /* 2026-11-03 用户要求白板行「稍微放大一点」：从 12/16 加到 16/20 */
+  padding: var(--fg-space-4) var(--fg-space-5);
+  border-left: 1px solid var(--fg-border-subtle);
+  text-decoration: none;
+  color: inherit;
+}
+
+.fg-wb:first-child {
+  border-left: 0;
+}
+
+/* 往期积压提示（2026-11-03）：首页只看今天，但没处置完的旧告警不能藏死。
+   一行小字 + 链接；没有积压时模板整行不渲染。 */
+.fg-wb-backlog {
+  margin: var(--fg-space-2) 0 0;
+  font-size: var(--fg-text-caption);
+  color: var(--fg-text-tertiary);
+}
+
+.fg-wb-backlog a {
+  margin-left: var(--fg-space-2);
+}
+
+a.fg-wb:hover {
+  background: var(--fg-bg-table-hover);
+}
+
+.fg-wb__k {
+  flex-shrink: 0;
+  font-size: var(--fg-text-caption);
+  color: var(--fg-text-tertiary);
+}
+
+.fg-wb__v {
+  font-family: var(--fg-font-mono);
+  font-variant-numeric: tabular-nums;
+  /* 24 → 28：白板只剩三项，数字可以再大一档（2026-11-03） */
+  font-size: 28px;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--fg-text-primary);
+}
+
+.fg-wb__v--sm {
+  font-size: 18px;
+}
+
+.fg-wb__v.is-alert {
+  color: var(--fg-status-pending-fg);
+}
+
+.fg-wb.is-muted .fg-wb__v {
+  /* 「样本不足」的数据位不是禁用控件：--fg-text-disabled 在白底 2.22:1，
+     24px/600 连大号字的 3:1 都不到。弱化交给右边的 .fg-wb__s 文案。 */
+  color: var(--fg-text-tertiary);
+}
+
+.fg-wb__s {
+  margin-left: auto;
+  min-width: 0;
+  overflow: hidden;
+  font-size: var(--fg-text-caption);
+  color: var(--fg-text-tertiary);
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ==========================================================================
+   P1 · 门灯（走廊呼叫灯）
+   方灯 = 安静；圆灯 = 有人等你。形状本身就是第二重编码。
+   ========================================================================== */
+.fg-doorbar {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: var(--fg-space-2);
+}
+
+.fg-doorlight {
+  display: flex;
+  align-items: center;
+  gap: var(--fg-space-3);
+  min-width: 0;
+  padding: var(--fg-space-2) var(--fg-space-3);
+  border: 1px solid var(--fg-border-subtle);
+  border-radius: var(--fg-radius-sm);
+  text-decoration: none;
+  color: inherit;
+}
+
+.fg-doorlight:hover {
+  background: var(--fg-bg-table-hover);
+  border-color: var(--fg-border-default);
+}
+
+.fg-doorlight__lamp {
+  flex-shrink: 0;
+  width: 10px;
+  height: 10px;
+  border-radius: var(--fg-radius-xs);
+  background: var(--fg-doorlight-idle);
+}
+
+.fg-doorlight.is-offline .fg-doorlight__lamp {
+  /* 离线是状态不是「禁用」：借 --fg-text-disabled 表达会让人以为这盏灯只是不可点 */
+  background: var(--fg-neutral-500);
+}
+
+.fg-doorlight.is-alert {
+  border-color: var(--fg-status-pending-border);
+  background: var(--fg-status-pending-bg);
+}
+
+.fg-doorlight.is-alert .fg-doorlight__lamp {
+  border-radius: 50%;
+  background: var(--fg-doorlight-alert);
+  box-shadow: 0 0 0 3px var(--fg-doorlight-halo);
+}
+
+.fg-doorlight__txt {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.35;
+}
+
+.fg-doorlight__loc {
+  overflow: hidden;
+  font-size: var(--fg-text-body-sm);
+  font-weight: 600;
+  color: var(--fg-text-primary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fg-doorlight__meta {
+  font-size: var(--fg-text-caption);
+  color: var(--fg-text-tertiary);
+}
+
+.fg-doorlight.is-alert .fg-doorlight__loc,
+.fg-doorlight.is-alert .fg-doorlight__meta {
+  color: var(--fg-status-pending-fg);
+}
+
+/* ---------- 运维台紧凑化（2026-11-05 第92轮二改 / 三改） ----------
+   二改：页头瘦身成 sr-only 标题，栅格与面板内边距各收一档
+        （栅格 24→16 / 面板头 56→44 / 面板体 20→16 / KPI 16·20→12·16），柱图 200→176。
+   三改：表格进首页（设备实况 / 数据库实况），行高 56→48、表头 48→40，并允许窄屏收缩。
+   全部带 body[data-page]，只作用于本页 —— 其余页面（含设备页）维持原间距。 */
+body[data-page="admin-overview"] .fg-content { gap: var(--fg-space-4); }
+body[data-page="admin-overview"] .fg-kpis { gap: var(--fg-space-4); }
+body[data-page="admin-overview"] .fg-kpi { padding: var(--fg-space-3) var(--fg-space-4); }
+body[data-page="admin-overview"] .fg-panel__head {
+  min-height: 44px;
+  padding: var(--fg-space-2) var(--fg-space-4);
+}
+body[data-page="admin-overview"] .fg-panel__body { padding: var(--fg-space-4); }
+/* 八改：176 → 140。一屏布局下这张图的高度**直接决定设备表能看见几行**
+   （第 2 行吃掉所有剩余高度）：1366×768 上 176 只够 3.5 行设备，140 能到 5~6 行。
+   24 根柱子在 140px 里照样读得出高低。 */
+body[data-page="admin-overview"] .fg-bars { height: 140px; }
+
+/* 表格：默认 760px 最小宽会逼出横向滚动条，首页两张表按内容自适应 */
+body[data-page="admin-overview"] .fg-table { min-width: 0; }
+body[data-page="admin-overview"] .fg-table thead th {
+  height: 40px;
+  padding: 0 var(--fg-space-2);
+}
+body[data-page="admin-overview"] .fg-table tbody td {
+  height: 48px;
+  padding: 0 var(--fg-space-2);
+}
+
+/* 八改（2026-11-06）：删掉「数据库实况」后整页改成一屏 ——
+   左列 8 栏：设备实况（第 2 行）/ 24h 吞吐（第 3 行）；右列 4 栏：系统健康跨 2–3 行。
+   页面本身不再滚，**设备表与系统健康各自在模块内滚**（表头 sticky），
+   底部那段 48px 留白也收掉（页面不滚了，留着只是白丢一屏高度）。
+   ⚠️ 只在 ≥1280 生效：1024–1279 的栅格本来就把面板叠成一列，硬锁一屏 = 把内容裁掉。
+      窄屏保持原来的「整页滚」，一行 CSS 都不覆盖。
+   ⚠️ 栅格用**显式行模板**（auto / 1fr / auto）：第 2 行吃掉所有多余高度，
+      设备表因此能多显示几行，而不是在页面底部留一整块空白。 */
+@media (min-width: 1280px) {
+  body[data-page="admin-overview"] .fg-page {
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    padding-bottom: var(--fg-space-4);
+  }
+  body[data-page="admin-overview"] .fg-content {
+    flex: 1 1 auto;
+    min-height: 0;
+    align-items: stretch;          /* 面板撑满所在行，别留半截白 */
+    grid-template-rows: auto minmax(0, 1fr) auto;
+  }
+  /* 右列「系统健康」跨第 2–3 行：12 行清单全露，不用滚 ——
+     它是这块运维台里最该一眼看完的东西（服务挂了要立刻看见）。
+     左列则上下叠「设备实况」与「24h 吞吐」。 */
+  body[data-page="admin-overview"] .fg-panel--tall { grid-row: span 2; }
+  /* 面板 = 头（固定）+ 体（吃掉剩余高度、自己滚） */
+  body[data-page="admin-overview"] .fg-panel--fill {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+  body[data-page="admin-overview"] .fg-panel--fill > .fg-panel__head { flex: none; }
+  body[data-page="admin-overview"] .fg-panel--fill > .fg-panel__body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+  }
+  /* 设备表：滚动交给 .fg-table-wrap 自己 —— 表头 sticky 只认**最近的滚动容器**。
+     若让 body 滚而 wrap 带 `overflow-x:auto`（按规范两个方向都算滚动容器），
+     表头会粘在 wrap 这个不滚的盒子上 ⇒ 粘不住。 */
+  body[data-page="admin-overview"] .fg-panel--fill > .fg-panel__body--flush {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  body[data-page="admin-overview"] .fg-panel--fill .fg-table-wrap {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+  }
+  body[data-page="admin-overview"] .fg-panel--fill .fg-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+  }
+  /* 系统健康 12 行要在一屏（1366×768）里全露：默认 8px 行距装不下，
+     收到 6px 后 12 行约 -48px，正好放下。只作用于本页这一块，
+     别去动 .fg-freshbar--stack 的公共值（其它页的行距是按宽松排的）。 */
+  body[data-page="admin-overview"] .fg-freshbar--stack .fg-freshbar__item {
+    padding-top: 6px;
+    padding-bottom: 6px;
+  }
+}
+
+/* 七改（2026-11-06）：设备实况加到 8 栏（设备/病区/点位/状态/最后心跳/IP/fps/rev），
+   1366 宽下 fg-col-8 只分到 ~720px ⇒ 中文列会被拆成「4F-B 病 / 区」这种两行，
+   状态标签还会贴上心跳列。收紧方式：**除第一列外一律 nowrap** ——
+   第一列（设备名 + 设备码 + 遥测）本来就该换行，让它吃掉剩余宽度；
+   其余列按内容定宽，浏览器就不会再把「4F-B 病区」拆开。
+   ⚠️ 别顺手把内边距也调小：8 栏 × 两侧会粘成一串，读起来比分两行更糟。 */
+body[data-page="admin-overview"] .fg-table thead th:not(:first-child),
+body[data-page="admin-overview"] .fg-table tbody td:not(:first-child) {
+  white-space: nowrap;
+}
+
+/* 设备名下面的设备码：第二行小字，不抢主名 */
+.fg-devcell__code {
+  margin-top: 2px;
+  font-size: var(--fg-text-caption);
+  line-height: var(--fg-leading-caption);
+  color: var(--fg-text-tertiary);
+}
+
+/* 板端遥测（CPU/内存/温度）：第三行，仅有新固件心跳时才出现 */
+.fg-devcell__tele {
+  margin-top: 2px;
+  font-size: var(--fg-text-caption);
+  line-height: var(--fg-leading-caption);
+  color: var(--fg-text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 数据库面板底行（最近写入 / 今日审计）：表格与面板之间的分隔 */
+.fg-dbstat__foot {
+  margin: 0;
+  padding: var(--fg-space-2) var(--fg-space-4);
+  border-top: 1px solid var(--fg-border-subtle);
+  color: var(--fg-text-tertiary);
+  font-size: var(--fg-text-caption);
+  line-height: var(--fg-leading-caption);
+}
+
+
+/* ---------- 点位格：灯 + 角上的筛选钮（2026-11-03） ----------
+   用户要的「灯角小按钮」：灯本体仍然进画面页，右上角的漏斗钮 = 队列只看这个点位。
+   两个可点目标不能嵌套（`<a>` 套 `<a>` 不合法、点了也分不清是谁的），
+   所以外面套一层定位壳，按钮绝对定位压在灯的角上。
+
+   位置在**右上角**而不是右下角：竖列（≥1440）里灯是两行文字，
+   右下角会压住「N 条待处置」那行——那正是筛选要看的数字。 */
+.fg-pointcell {
+  position: relative;
+  display: flex;
+  min-width: 0;
+}
+
+.fg-pointcell > .fg-doorlight {
+  /* 灯撑满整格；右侧给按钮留出一条不写字的通道，长点位名不会钻到按钮底下 */
+  flex: 1 1 auto;
+  min-width: 0;
+  padding-right: 30px;
+}
+
+.fg-pointcell__filter {
+  position: absolute;
+  top: 50%;
+  right: 5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  transform: translateY(-50%);
+  border-radius: var(--fg-radius-xs);
+  /* 常驻可见但安静：它是补充动作（主目标是灯本体），不能抢告警红块的注意力 */
+  color: var(--fg-text-tertiary);
+}
+
+.fg-pointcell__filter:hover {
+  background: var(--fg-bg-table-hover);
+  color: var(--fg-text-primary);
+}
+
+.fg-pointcell__filter:focus-visible {
+  outline: 2px solid var(--fg-primary);
+  outline-offset: -2px;
+}
+
+/* 筛选中：钮变实心松绿，灯描一圈同色边 —— 两处同时说「这一格在筛」，
+   只看颜色或只看图形的人都能读出来。 */
+.fg-pointcell__filter.is-active {
+  background: var(--fg-primary);
+  color: var(--fg-text-inverse);
+}
+
+.fg-pointcell.is-filtered > .fg-doorlight {
+  border-color: var(--fg-primary);
+  box-shadow: inset 0 0 0 1px var(--fg-primary);
+}
+
+/* ---------- 队列的「点位筛选」条 ---------- */
+.fg-filterchip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--fg-space-2);
+  min-width: 0;
+  height: 28px;
+  padding: 0 var(--fg-space-1) 0 var(--fg-space-3);
+  border: 1px solid var(--fg-border-default);
+  border-radius: var(--fg-radius-sm);
+  background: var(--fg-bg-surface);
+  font-size: var(--fg-text-caption);
+  line-height: var(--fg-leading-caption);
+}
+
+.fg-filterchip__k {
+  flex: none;
+  color: var(--fg-text-tertiary);
+}
+
+.fg-filterchip__v {
+  /* 多选时名字会变长（「4F-B 东走廊、4F-B 西走廊」）：这颗胶囊整体可缩，
+     缩不下就截断名单，绝不把右侧的「在告警中心查看」挤出面板。
+     ⚠️ min-width:0 不能省 —— flex 项默认 min-width:auto，截断不会生效。 */
+  min-width: 0;
+  overflow: hidden;
+  font-weight: 600;
+  color: var(--fg-text-primary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fg-filterchip__x {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: var(--fg-radius-xs);
+  color: var(--fg-text-tertiary);
+}
+
+.fg-filterchip__x:hover {
+  background: var(--fg-bg-table-hover);
+  color: var(--fg-text-primary);
+}
+
+.fg-filterchip__x:focus-visible {
+  outline: 2px solid var(--fg-primary);
+  outline-offset: -2px;
+}
+
+/* ---------- 设备页：门灯卡片 ----------
+   每台设备一张卡，卡头就是门灯本体。卡内的门灯去掉自己的边框和底色，
+   否则就是「卡片框里再套一个门灯框」，两道 1px 边叠在一起。 */
+.fg-devcard-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: var(--fg-space-3);
+}
+
+.fg-devcard {
+  display: flex;
+  flex-direction: column;
+  gap: var(--fg-space-2);
+  min-width: 0;
+  padding: var(--fg-space-3) var(--fg-space-4);
+  background: var(--fg-bg-surface);
+  border: 1px solid var(--fg-border-default);
+  border-radius: var(--fg-radius-sm);
+}
+
+.fg-devcard > .fg-doorlight,
+.fg-devcard > .fg-doorlight:hover {
+  padding: 0;
+  background: none;
+  border: 0;
+  border-radius: 0;
+}
+
+.fg-devcard__spec {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--fg-space-2) var(--fg-space-4);
+  margin: 0;
+  padding-top: var(--fg-space-2);
+  border-top: 1px solid var(--fg-border-subtle);
+}
+
+.fg-devcard__spec > div {
+  min-width: 0;
+}
+
+.fg-devcard__spec dt {
+  font-size: var(--fg-text-caption);
+  color: var(--fg-text-tertiary);
+}
+
+.fg-devcard__spec dd {
+  margin: 0;
+  overflow: hidden;
+  font-size: var(--fg-text-body-sm);
+  color: var(--fg-text-primary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 新鲜度条：一行时间 + 台数 + 未闭环。比任何「统计卡」都先回答「系统还活着吗」 */
+.fg-freshbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--fg-space-2) var(--fg-space-5);
+  padding: var(--fg-space-2) var(--fg-space-3);
+  margin-bottom: var(--fg-space-4);
+  background: var(--fg-bg-table-head);
+  border: 1px solid var(--fg-border-subtle);
+  border-radius: var(--fg-radius-sm);
+}
+
+.fg-freshbar__item {
+  display: flex;
+  align-items: baseline;
+  gap: var(--fg-space-2);
+  min-width: 0;
+}
+
+.fg-freshbar__k {
+  font-size: var(--fg-text-caption);
+  color: var(--fg-text-tertiary);
+}
+
+.fg-freshbar__v {
+  font-size: var(--fg-text-body-sm);
+  font-weight: 600;
+  color: var(--fg-text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 两条都是单类选择器，靠源码顺序定胜负；这里必须显式写复合选择器，
+   否则通用 .is-danger 会被上面的 .fg-freshbar__v 盖掉。
+   2026-11-07 补 is-warn：账号页的「已停用 / 未配区域」是**提醒**级不是故障级，
+   而通用 `.is-warn`（app.css 上部）同样输给 `.fg-freshbar__v` 的 color。 */
+.fg-freshbar__v.is-danger {
+  color: var(--fg-danger-700);
+}
+
+.fg-freshbar__v.is-warn {
+  color: var(--fg-warning-700);
+}
+
+/* 竖排形态：进 4 栏窄面板（总览「系统健康」）时六项一行放不下，改成「键左 · 值右」清单。
+   它住在面板体里 ⇒ 去掉自带底色、内边距与下边距，否则就是「卡里再套一张灰卡」。 */
+.fg-freshbar--stack {
+  flex-direction: column;
+  gap: 0;
+  padding: 0;
+  margin-bottom: 0;
+  background: none;
+  border: 0;
+}
+
+.fg-freshbar--stack .fg-freshbar__item {
+  justify-content: space-between;
+  padding: var(--fg-space-2) 0;
+  border-top: 1px solid var(--fg-border-subtle);
+}
+
+.fg-freshbar--stack .fg-freshbar__item:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.fg-freshbar--stack .fg-freshbar__item:last-child {
+  padding-bottom: 0;
+}
+
+.fg-freshbar--stack .fg-freshbar__v {
+  text-align: right;
+}
+
+/* 分组标题（核心服务）：一条分隔线 + 小标题，本身不是一行数据 */
+.fg-freshbar--stack .fg-freshbar__item--group {
+  padding-bottom: 0;
+  border-top: 1px solid var(--fg-border-subtle);
+}
+
+.fg-freshbar--stack .fg-freshbar__item--group .fg-freshbar__k {
+  font-weight: 600;
+  color: var(--fg-text-secondary);
+}
+
+@media (max-width: 1023px) {
+  /* 白板只剩三项，平板也排一行；两列会在第二行留一个空槽 */
+  .fg-whiteboard {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .fg-wb__s {
+    display: none;
+  }
+}
+
+@media (max-width: 767px) {
+  .fg-whiteboard {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .fg-wb {
+    padding: var(--fg-space-2) var(--fg-space-3);
+  }
+
+  .fg-wb__v {
+    font-size: 20px;
+  }
+}
+
+/* ==========================================================================
+   P0 · 登录页「演示账号」（FG_DEMO_HINT=0 时不渲染）
+
+   2026-11-11 重做：原来是三行表格（姓名+角色 / 说明 / 填入），体量和「登录」
+   按钮差不多，还夹在按钮与三条说明中间 —— 一张便签抢了主操作的位置。
+   现在是一排 chip：姓名 + 角色，长说明挪进 title。密码走上面的 demo-head，
+   **明文**显示 —— 演示账号的意义就是能看，掩成圆点等于没说。
+   ========================================================================== */
+.fg-login__demo {
+  margin-top: var(--fg-space-5);
+}
+
+.fg-login__demo-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--fg-space-2);
+  margin-bottom: var(--fg-space-2);
+  font-size: var(--fg-text-caption);
+  color: var(--fg-text-tertiary);
+}
+
+.fg-login__demo-pw code {
+  font-family: var(--fg-font-mono);
+  font-size: var(--fg-text-caption);
+  color: var(--fg-text-secondary);
+}
+
+.fg-login__demo-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--fg-space-2);
+}
+
+/* chip 整块可点：点一下把这个角色的账号密码填进表单 */
+.fg-login__chip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--fg-space-2);
+  padding: var(--fg-space-2) var(--fg-space-3);
+  border: 1px solid var(--fg-border-default);
+  border-radius: 8px;
+  background: var(--fg-bg-raised);
+  font-family: inherit;
+  cursor: pointer;
+  transition: border-color var(--fg-motion-fast) var(--fg-ease-out),
+              background-color var(--fg-motion-fast) var(--fg-ease-out),
+              transform var(--fg-motion-fast) var(--fg-ease-out),
+              box-shadow var(--fg-motion-fast) var(--fg-ease-out);
+}
+
+/* chip 是"一键填入"的快捷入口，抬起量比登录按钮小一档（1px vs 2px 的量级），
+   免得抢主操作的视觉权重 */
+.fg-login__chip:hover {
+  border-color: var(--fg-pine-300);
+  background: var(--fg-bg-table-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(11, 43, 38, .10);
+}
+
+.fg-login__chip:active {
+  transform: translateY(0);
+  box-shadow: none;
+}
+
+.fg-login__chip:focus-visible {
+  outline: 2px solid var(--fg-border-focus);
+  outline-offset: 2px;
+}
+
+.fg-login__chip-name {
+  font-size: var(--fg-text-body-sm);
+  font-weight: 600;
+  color: var(--fg-text-primary);
+}
+
+.fg-login__chip-role {
+  font-size: var(--fg-text-caption);
+  color: var(--fg-pine-600);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   UI 重塑（2026-10-30）
+   1) 「我的」页 /me
+   2) 登录页手机稿（深松针天幕 + 白色上滑面板）
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* --------------------------------------------------------------------------
+   1. 我的页 /me
+   -------------------------------------------------------------------------- */
+
+/* 页头保留：原来靠 display:none 把「我的」藏掉，桌面打开这一页就只剩
+   一张 560px 的窄卡飘在画布中间——没有标题、没有动作，像手机上截的图。
+   现在身份头降级成一张卡，页头照常出场。 */
+
+/* 桌面两栏：左边身份 + 今日三个数，右边分组列表，一屏看完不用滚 */
+.fg-me {
+  grid-column: span 12;
+  width: 100%;
+  max-width: 1040px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
+  gap: var(--fg-space-5);
+  align-items: start;
+}
+
+.fg-me__side {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+/* 右栏第一个分组标签不带上外边距，否则整列比左边的身份头低 20px */
+.fg-me__side > .fg-me__glabel:first-child {
+  margin-top: 0;
+}
+
+.fg-me__hero {
+  padding: var(--fg-space-5);
+  border-radius: var(--fg-radius-sm);
+  color: var(--fg-pine-100);
+  background:
+    radial-gradient(120% 90% at 84% 0%, rgba(78, 149, 133, .34) 0%, rgba(78, 149, 133, 0) 60%),
+    linear-gradient(165deg, var(--fg-pine-800) 0%, var(--fg-pine-950) 100%);
+}
+
+.fg-me__id {
+  display: flex;
+  align-items: center;
+  gap: var(--fg-space-4);
+}
+
+.fg-me__ava {
+  width: 58px;
+  height: 58px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(214, 233, 226, .22);
+  border-radius: var(--fg-radius-sm);
+  background: rgba(214, 233, 226, .14);
+  color: var(--fg-pine-100);
+  font-size: 23px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.fg-me__who {
+  min-width: 0;
+}
+
+.fg-me__name {
+  margin: 0;
+  /* 21px 不在阶梯上，而行高 28 恰好是 h3 的行高——原意就是 h3 */
+  font-size: var(--fg-text-h3);
+  line-height: var(--fg-leading-h3);
+  font-weight: 600;
+  letter-spacing: .04em;
+  color: var(--fg-text-inverse);
+}
+
+.fg-me__line {
+  display: block;
+  margin-top: 5px;
+  font-size: var(--fg-text-caption);
+  line-height: 18px;
+  color: var(--fg-pine-300);
+}
+
+.fg-me__stats {
+  display: flex;
+  margin-top: var(--fg-space-5);
+  padding-top: var(--fg-space-4);
+  border-top: 1px solid rgba(214, 233, 226, .14);
+}
+
+.fg-me__stat {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.fg-me__stat + .fg-me__stat {
+  padding-left: var(--fg-space-4);
+  border-left: 1px solid rgba(214, 233, 226, .12);
+}
+
+.fg-me__stat em {
+  display: block;
+  font-style: normal;
+  font-size: var(--fg-text-caption);
+  letter-spacing: .06em;
+  color: var(--fg-pine-300);
+}
+
+.fg-me__stat b {
+  display: block;
+  margin-top: 5px;
+  font-family: var(--fg-font-mono);
+  font-size: 20px;
+  line-height: 26px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--fg-text-inverse);
+}
+
+.fg-me__glabel {
+  margin: var(--fg-space-5) 4px var(--fg-space-2);
+  font-size: var(--fg-text-caption);
+  letter-spacing: .12em;
+  color: var(--fg-text-tertiary);
+}
+
+.fg-me__grp {
+  background: var(--fg-bg-raised);
+  border: 1px solid var(--fg-border-default);
+  border-radius: var(--fg-radius-sm);
+  overflow: hidden;
+}
+
+.fg-me__item {
+  display: flex;
+  align-items: center;
+  gap: var(--fg-space-3);
+  width: 100%;
+  min-height: 52px;
+  margin: 0;
+  padding: 12px var(--fg-space-4);
+  border: 0;
+  border-top: 1px solid var(--fg-border-subtle);
+  background: transparent;
+  color: var(--fg-text-primary);
+  font-family: inherit;
+  /* 15px 不在阶梯上；设置项是正文，用 body（16px） */
+  font-size: var(--fg-text-body);
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.fg-me__grp > .fg-me__item:first-child {
+  border-top: 0;
+}
+
+.fg-me__item:active {
+  background: var(--fg-bg-table-hover);
+}
+
+.fg-me__ico {
+  display: inline-flex;
+  flex: 0 0 auto;
+  color: var(--fg-pine-600);
+}
+
+.fg-me__tx {
+  min-width: 0;
+}
+
+.fg-me__sub {
+  display: block;
+  margin-top: 3px;
+  font-size: var(--fg-text-caption);
+  line-height: 18px;
+  color: var(--fg-text-tertiary);
+}
+
+.fg-me__val {
+  margin-left: auto;
+  flex: 0 0 auto;
+  font-family: var(--fg-font-mono);
+  font-size: var(--fg-text-caption);
+  color: var(--fg-text-tertiary);
+}
+
+.fg-me__chev {
+  margin-left: auto;
+  display: inline-flex;
+  flex: 0 0 auto;
+  /* 箭头是「这一行可以点开」的唯一线索，属于非文字控件边界，要 ≥3:1 */
+  color: var(--fg-neutral-500);
+}
+
+/* 开关：方角拨块。不为了"像 iOS"破掉 0/2/4 的圆角纪律 */
+.fg-me__sw {
+  position: relative;
+  margin-left: auto;
+  width: 44px;
+  height: 26px;
+  flex: 0 0 auto;
+}
+
+.fg-me__sw input {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.fg-me__sw span {
+  position: absolute;
+  inset: 0;
+  border-radius: var(--fg-radius-sm);
+  /* 关态轨道 #C7D1CB 在白卡上只有 1.57:1，开态是 8.11:1——
+     开关的「开/关」差别本来该一眼看出，原来关态等于看不见。 */
+  background: var(--fg-neutral-500);
+  transition: background var(--fg-motion-fast) var(--fg-ease-out);
+}
+
+.fg-me__sw span::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 20px;
+  height: 20px;
+  border-radius: var(--fg-radius-xs);
+  background: var(--fg-bg-raised);
+  transition: transform var(--fg-motion-fast) var(--fg-ease-out);
+}
+
+.fg-me__sw input:checked + span {
+  background: var(--fg-pine-600);
+}
+
+.fg-me__sw input:checked + span::after {
+  transform: translateX(18px);
+}
+
+.fg-me__sw input:focus-visible + span {
+  outline: 2px solid var(--fg-border-focus);
+  outline-offset: 2px;
+}
+
+.fg-me__out {
+  margin-top: var(--fg-space-5);
+}
+
+.fg-me__out .fg-btn {
+  width: 100%;
+  min-height: 50px;
+  justify-content: center;
+  border-color: var(--fg-status-pending-border);
+  background: var(--fg-bg-raised);
+  color: var(--fg-status-pending-fg);
+  font-weight: 600;
+  letter-spacing: .08em;
+}
+
+.fg-me__foot {
+  margin-top: var(--fg-space-3);
+  text-align: center;
+  /* 原来是 11px + --fg-text-disabled：底色上对比度只有 1.95:1，等于写给看不见的人。
+     12px 是阶梯上最小的一级，颜色退到 tertiary（4.9:1）仍然明显弱于正文。 */
+  font-size: var(--fg-text-caption);
+  line-height: 18px;
+  color: var(--fg-text-tertiary);
+}
+
+@media (max-width: 767px) {
+  /* 手机上身份头要出血到底，两侧不留灰边 */
+  .fg-me {
+    max-width: none;
+    margin: 0 calc(-1 * var(--fg-page-x));
+    display: flex;
+    flex-direction: column;
+    /* 桌面那套是 grid + align-items:start（两栏各按内容对齐）。
+       换成 flex 列之后 align-items 管的是横轴，不写 stretch 的话
+       身份头和右栏都缩到内容宽度，屏幕右边留一大条白。 */
+    align-items: stretch;
+  }
+
+  .fg-me__hero {
+    padding: 22px 20px 20px;
+    border-radius: 0;
+  }
+
+  .fg-me__glabel {
+    margin: var(--fg-space-4) 16px var(--fg-space-2);
+  }
+
+  .fg-me__grp {
+    margin: 0 16px;
+  }
+
+  .fg-me__out {
+    margin: var(--fg-space-4) 16px 0;
+  }
+
+  .fg-me__foot {
+    margin: var(--fg-space-2) 16px 0;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   2. 登录页手机稿
+   深松针天幕压在上方，白色面板从下面推上来——和值班台、我的页同一套语气。
+   -------------------------------------------------------------------------- */
+
+/* 2026-11-11：手机上不再需要"另一套图形"这类补丁 ——
+   骨架星座（.fg-login__const）删了，走廊（.fg-login__corr*）也整个换成了
+   闭环面板，桌面和手机现在是**同一套结构**，媒体查询里只剩尺寸和间距。 */
+@media (max-width: 767px) {
+  .fg-login {
+    display: block;
+    min-height: 100vh;
+    min-height: 100dvh;
+    background: var(--fg-pine-950);
+  }
+
+  /* 手机上不再给天幕定死高度 —— 里面现在装的是走廊（自带 min-height 的横带），
+     定死高度只会把它压扁或让它溢出。让它按内容长高。 */
+  .fg-login__brand {
+    --fg-login-pad: 28px;
+    position: relative;
+    padding: 0;
+    overflow: hidden;
+    background: linear-gradient(168deg, var(--fg-pine-800) 0%, var(--fg-pine-950) 100%);
+  }
+
+  .fg-login__brand-top {
+    padding-top: 34px;
+  }
+
+  .fg-login__tagline {
+    margin-top: var(--fg-space-6);
+    font-size: var(--fg-text-h1);
+    line-height: var(--fg-leading-h1);
+    letter-spacing: .02em;
+  }
+
+  /* 天幕窄，黄铜短线 + 「系统状态」标签会把落款撑高；手机上只留状态本身。
+     （2026-11-04：原来这里还有时间脊的定位覆盖，随脊一起去掉了。） */
+  .fg-login__meta .fg-login__rule,
+  .fg-login__status-k {
+    display: none;
+  }
+
+  .fg-login__meta {
+    /* ⚠️ 手机上居中逻辑反过来：状态钉在天幕**底部**（margin-top:auto），
+       所以必须把桌面那条 margin-bottom:auto 归零，否则天幕上下两端
+       各吃一半空隙，状态会浮到天幕中间去。 */
+    margin-top: auto;
+    margin-bottom: 0;
+    padding-bottom: var(--fg-space-6);
+    gap: 6px;
+    /* 网关、摄像头、上次登录——值班前要确认的系统状态，不该是页面上最小的字 */
+    font-size: var(--fg-text-caption);
+    line-height: 18px;
+  }
+
+  .fg-login__formside {
+    display: block;
+    padding: 22px 28px 32px;
+    background: var(--fg-bg-raised);
+    border-radius: var(--fg-radius-sm) var(--fg-radius-sm) 0 0;
+    box-shadow: 0 -18px 44px rgba(0, 0, 0, .32);
+  }
+
+  .fg-login__card {
+    width: 100%;
+  }
+
+  .fg-login__title {
+    font-size: var(--fg-text-h3);
+    line-height: var(--fg-leading-h3);
+  }
+
+  .fg-login__form {
+    margin-top: var(--fg-space-4);
+    gap: 11px;
+  }
+
+  .fg-login__field {
+    gap: 5px;
+  }
+
+  .fg-login__label {
+    font-size: 12px;
+  }
+
+  .fg-login__input {
+    height: 48px;
+    font-size: 16px;
+  }
+
+  .fg-login__submit {
+    height: 52px;
+    margin-top: 6px;
+    font-size: 16px;
+    letter-spacing: .16em;
+  }
+
+  .fg-login__demo {
+    margin-top: var(--fg-space-4);
+  }
+
+  /* 锁定策略 / 忘记密码 / 隐私声明，是登录页仅有的三条「必须读到」的说明。
+     外边距归外层列表（组内 8px 由 .fg-login__notes 的 gap 管）。 */
+  .fg-login__notes {
+    margin-top: var(--fg-space-3);
+  }
+
+  .fg-login__note {
+    font-size: var(--fg-text-caption);
+    line-height: 18px;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   3. 手机顶栏与页面尺度
+   窄屏只有一件事要成立：一眼知道这是衡护、现在什么班、有没有待处置。
+   其余（病区名、搜索框、连接状态点）都收起来——状态点单剩一个绿圆点没有字义。
+   -------------------------------------------------------------------------- */
+
+.fg-topbar__brand {
+  display: none;
+}
+
+@media (max-width: 767px) {
+  /* 390px 宽的手机上 32px 侧边距太奢侈，全站收到 16 */
+  :root {
+    --fg-page-x: 16px;
+  }
+
+  .fg-topbar {
+    height: 56px;
+  }
+
+  .fg-topbar__brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    font-size: var(--fg-text-body);
+    font-weight: 600;
+    letter-spacing: .10em;
+    color: var(--fg-text-primary);
+  }
+
+  .fg-topbar__brand svg {
+    color: var(--fg-pine-600);
+  }
+
+  .fg-status {
+    display: none;
+  }
+
+  /* 班次牌连同它这条手机覆盖一起删了（2026-11-04）：见 base.html 里的说明。 */
+
+  .fg-topbar__right {
+    gap: var(--fg-space-2);
+  }
+
+  .fg-notify__count {
+    top: -3px;
+    right: -3px;
+  }
+
+  /* 出血：光靠负边距不行——grid 项会先按"栏宽"定宽，结果只左移不撑开。
+     显式把宽度补上两侧边距，盒子才真的顶到屏幕两边。 */
+  .fg-me {
+    width: calc(100% + 2 * var(--fg-page-x));
+  }
+}
+
+/* --------------------------------------------------------------------------
+   4. 登录页手机稿
+   ⚠️ 2026-11-11：这一节原先放的是"左栏走廊"的淡出 mask 和手机天幕的调整。
+      走廊在第二次重做里被整个换掉（见 login.html 文件头），
+      连同 `.fg-login__corr` / `.fg-login__corrwrap` / `.fg-login__const`
+      一起删干净了 —— 手机上现在和桌面**同一套结构**，不需要单独补规则。
+   -------------------------------------------------------------------------- */
+
+/* --------------------------------------------------------------------------
+   5. 值班工作台手机稿（方向 A：画面先说）
+   护士的视线顺序：正在发生的事 → 哪个点位亮的 → 有谁在等 → 今天的历史。
+   桌面那套"白板 → 画面 + 告警流 / 队列"在 390px 宽上完全走样，
+   所以这里用 display:contents 把两层包裹拆平，再按 order 重排。
+   -------------------------------------------------------------------------- */
+
+@media (max-width: 767px) {
+  /* 页头在手机上是纯损耗：标题和底部 Tab 重复，副标题挤成两行，两个按钮占满一行 */
+  .fg-app[data-page="nurse-today"] .fg-page-head {
+    display: none;
+  }
+
+  /* ── 白板：3 项压成一行，标签在数字上方 ── */
+  .fg-whiteboard {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    width: calc(100% + 2 * var(--fg-page-x));
+    margin-inline: calc(-1 * var(--fg-page-x));
+    border-radius: 0;
+    border-left: 0;
+    border-right: 0;
+  }
+
+  .fg-wb {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+    padding: 8px 10px;
+  }
+
+  .fg-wb__k {
+    /* 原来压到 10px：这是护士首屏最常读的三个词（待处置/今日告警/设备） */
+    font-size: var(--fg-text-caption);
+    letter-spacing: .02em;
+  }
+
+  .fg-wb__v {
+    font-size: var(--fg-text-h3);
+    line-height: 24px;
+  }
+
+  .fg-wb__v--sm {
+    font-size: var(--fg-text-body);
+  }
+
+  /* ── 重排：拆掉两层包裹，面板直接排进 .fg-content ── */
+  .fg-split,
+  .fg-split__main,
+  .fg-split__side {
+    display: contents;
+  }
+
+  .fg-split .fg-panel {
+    grid-column: span 12;
+  }
+
+  .fg-whiteboard { order: 0; }
+  #live-panel { order: 1; }
+  #device-strip { order: 2; }
+  [data-refresh-region="pending-queue"] { order: 3; }
+  [data-refresh-region="alert-stream"] { order: 4; }
+  .fg-split__side > .fg-panel:last-child { order: 5; }
+
+  /* ── 面板头：标题只占一行，副标题整条收起 ── */
+  .fg-panel__title {
+    white-space: nowrap;
+  }
+
+  .fg-panel__sub {
+    display: none;
+  }
+
+  .fg-panel__head {
+    min-height: 48px;
+    gap: var(--fg-space-2);
+    padding: 8px var(--fg-space-3);
+  }
+
+  /* ── 实时画面：出血成一条监视带，占位文案只留角标 ── */
+  #live-panel {
+    width: calc(100% + 2 * var(--fg-page-x));
+    margin-inline: calc(-1 * var(--fg-page-x));
+    border-radius: 0;
+    border-left: 0;
+    border-right: 0;
+  }
+
+  #live-panel .fg-panel__head {
+    padding: 8px var(--fg-page-x);
+  }
+
+  #live-panel .fg-panel__body {
+    padding: 0;
+  }
+
+  #live-panel .fg-live {
+    max-width: none;
+  }
+
+  .fg-live__hint {
+    display: none;
+  }
+
+  .fg-live__badge {
+    font-size: 12px;
+  }
+
+  /* ── 门灯：一行横扫，不换行 ── */
+  #device-strip .fg-panel__body {
+    padding: var(--fg-space-3);
+  }
+
+  .fg-doorbar {
+    display: flex;
+    gap: var(--fg-space-2);
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .fg-doorbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* ── 处置队列：手机上放不下六列（固定列合计 398px > 面板 ~358px），
+     收成「时间 / 级别 / 点位 / 等时」四列；人员与接警人交给工作区显示。
+     这是第 71 轮队列改版遗留的横向溢出，2026-11-03 顺手修掉。
+     ⚠️ 必须带 body[data-page]，基础 .fg-wq 规则在本块之后，同权重会被它盖掉。 ── */
+  body[data-page="nurse-today"] .fg-wq {
+    grid-template-columns: 48px 64px minmax(0, 1fr) 64px;
+    gap: var(--fg-space-2);
+    padding: var(--fg-space-3);
+  }
+
+  body[data-page="nurse-today"] .fg-wq__person,
+  body[data-page="nurse-today"] .fg-wq__who {
+    display: none;
+  }
+
+  /* ⚠️ 2026-11-03：门灯外面多套了一层 .fg-pointcell（灯角筛选钮的定位壳），
+     横滑行里的 flex 项变成它 —— 只给 .fg-doorlight 设 flex/min-width 的话，
+     外壳会被压缩成 31px（实测），整排灯塌掉。两个选择器都要给。 */
+  .fg-pointcell,
+  .fg-doorlight {
+    flex: 0 0 auto;
+    min-width: 92px;
+  }
+
+  /* ── 待处置队列：每一行都要能一眼看清"等了多久" ── */
+  .fg-queue__item {
+    padding: var(--fg-space-3);
+  }
+
+  .fg-queue__time {
+    font-size: var(--fg-text-body);
+  }
+}
+
+/* --------------------------------------------------------------------------
+   6. 待处置队列：行内接警
+   原来每行只有「跳详情页」一条路，接警要跳两页。现在按钮就在行尾；
+   手机上整行变一张卡，按钮占满底部——单手拇指够得到。
+   -------------------------------------------------------------------------- */
+
+.fg-queue__row {
+  display: flex;
+  align-items: center;
+  gap: var(--fg-space-2);
+  padding-right: var(--fg-space-3);
+  border-bottom: 1px solid var(--fg-border-subtle);
+}
+
+.fg-queue__row:last-child {
+  border-bottom: 0;
+}
+
+.fg-queue__row:hover {
+  background: var(--fg-bg-table-hover);
+}
+
+.fg-queue__row .fg-queue__item {
+  flex: 1 1 auto;
+  min-width: 0;
+  border-bottom: 0;
+}
+
+.fg-queue__row .fg-queue__item:hover {
+  background: transparent;
+}
+
+.fg-queue__act {
+  flex: 0 0 auto;
+}
+
+@media (max-width: 767px) {
+  .fg-queue {
+    gap: var(--fg-space-2);
+    padding: var(--fg-space-3);
+  }
+
+  .fg-queue__row {
+    flex-wrap: wrap;
+    align-items: stretch;
+    padding: 0;
+    border: 1px solid var(--fg-border-default);
+    border-radius: var(--fg-radius-sm);
+    background: var(--fg-bg-raised);
+    overflow: hidden;
+  }
+
+  .fg-queue__row .fg-queue__item {
+    flex: 1 1 100%;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 6px;
+    padding: 10px 12px 8px;
+  }
+
+  .fg-queue__time {
+    font-size: var(--fg-text-caption);
+  }
+
+  .fg-queue__wait {
+    margin-left: 0;
+  }
+
+  .fg-queue__act {
+    flex: 1 1 100%;
+    margin: 0 12px 10px;
+    min-height: 42px;
+  }
+}
+
+/* ── 设备与点位（2026-11-01 设备管理 P0） ─────────────────────────────── */
+/* 病区层（2026-11-06 第96轮「十改」）：点位页从「区域 → 卡片」两级变成
+   「病区 → 区域 → 卡片」三级。
+   病区标题是**静态一行、不折叠**（用户拍板）：现网只有两个病区，折叠是过度设计；
+   更要紧的是折叠会和纯前端筛选打架 —— 筛中的卡片落在收起的病区里要不要自动弹开？
+   层级靠左侧竖线 + 缩进表达，不然三个标题排下来看着是平的。 */
+.fg-ward-group {
+  margin-top: var(--fg-space-6);
+}
+/* 第一块病区紧跟在筛选栏/汇总条后面，别再叠一层上边距 */
+.fg-freshbar + .fg-ward-group {
+  margin-top: 0;
+}
+.fg-ward-group__head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--fg-space-2);
+  padding-bottom: var(--fg-space-2);
+  margin-bottom: var(--fg-space-1);
+  border-bottom: 2px solid var(--fg-border-default);
+}
+.fg-ward-group__title {
+  margin: 0;
+  font-size: var(--fg-text-h4);
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--fg-text-primary);
+  /* 长病区名（「演示数据归档（不在任何病区显示）」这种）折行时别留下孤字 */
+  text-wrap: balance;
+}
+.fg-ward-group__code {
+  font-family: var(--fg-font-mono);
+  font-size: var(--fg-text-caption);
+  line-height: 1.5;
+  color: var(--fg-text-tertiary);
+  background: var(--fg-bg-canvas);
+  border: 1px solid var(--fg-border-subtle);
+  border-radius: var(--fg-radius-sm);
+  padding: 0 var(--fg-space-1);
+}
+.fg-ward-group__meta {
+  font-size: var(--fg-text-caption);
+  color: var(--fg-text-tertiary);
+  /* 几个病区的「N 个区域 · N 个点位」上下要对齐，数字得等宽 */
+  font-variant-numeric: tabular-nums;
+}
+.fg-ward-group__head .fg-btn {
+  margin-left: auto;
+}
+/* 病区里的区域整体缩进一级（含「未分组」那段）。
+   ⚠️ 挂在 `--titled` 上而不是 `.fg-ward-group` 上：护士长入口（/head/points）只有
+      一个病区、**不画病区标题**，但那个 `<section class="fg-ward-group">` 外壳照样在
+      （筛选脚本要按它整块收）。缩进挂在外壳上的话，她的区域会平白缩进去、还多一条
+      没有由头的竖线 —— 等于悄悄改了护士长那页的样子。 */
+.fg-ward-group--titled > .fg-zone-group {
+  margin-left: var(--fg-space-3);
+  padding-left: var(--fg-space-4);
+  border-left: 2px solid var(--fg-border-subtle);
+}
+/* 空病区引导（十改：用户拍板「显示，并给引导」，刚建完的病区 0 区域 0 点位，
+   不渲染就看不见，人会以为没建成）。虚框 = 「这里还没有内容」。 */
+.fg-ward-group__empty {
+  display: flex;
+  align-items: center;
+  gap: var(--fg-space-3);
+  margin: var(--fg-space-2) 0 0 var(--fg-space-3);
+  padding: var(--fg-space-5) var(--fg-space-4);
+  border: 1px dashed var(--fg-border-default);
+  border-radius: var(--fg-radius-sm);
+  color: var(--fg-text-tertiary);
+  font-size: var(--fg-text-body-sm);
+}
+.fg-ward-group__empty p {
+  margin: 0;
+}
+.fg-ward-group__empty .fg-btn {
+  margin-left: auto;
+  flex: none;
+}
+
+.fg-zone-group {
+  margin-top: var(--fg-space-4);
+}
+.fg-zone-group__head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--fg-space-2);
+  margin-bottom: var(--fg-space-2);
+  padding-bottom: var(--fg-space-1);
+  border-bottom: 1px solid var(--fg-border-subtle);
+}
+.fg-zone-group__name {
+  margin: 0;
+  font-size: var(--fg-text-body);
+  font-weight: 600;
+  color: var(--fg-text-primary);
+}
+.fg-zone-group__meta {
+  font-size: var(--fg-text-caption);
+  color: var(--fg-text-tertiary);
+}
+
+.fg-devcard__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--fg-space-2);
+  min-width: 0;
+}
+.fg-devcard__name {
+  margin: 0;
+  overflow: hidden;
+  font-size: var(--fg-text-body);
+  font-weight: 600;
+  color: var(--fg-text-primary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.fg-devcard__code {
+  flex: none;
+  font-size: var(--fg-text-caption);
+  color: var(--fg-text-tertiary);
+}
+.fg-devcard__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--fg-space-2);
+  padding-top: var(--fg-space-2);
+  border-top: 1px solid var(--fg-border-subtle);
+}
+
+/* 板端遥测条（2026-11-06 十八改；2026-11-07 重排成「四列仪表格」）
+   - 标签在上（12px 三级灰）、数值在下（14px 600 等宽数字）：五项靠**列对齐**成组，
+     不再拼成一句流水话；
+   - `auto-fit`：NPU 读不到时 4 列，读到（5 项）时自动 5 列，不留空洞；
+   - 运行时长是**背景信息**不是读数：独占页脚，用发丝线与上面隔开；
+   - 颜色**不是唯一线索**：超阈值时数值下另起一行「偏高 / 满载 / 过热」；
+   - 离线整条降灰，但**保留**告警色 —— 那是最后一刻的事实，别替人抹掉。 */
+.fg-tele {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(56px, 1fr));
+  gap: var(--fg-space-2) var(--fg-space-3);
+  padding-top: var(--fg-space-2);
+  border-top: 1px solid var(--fg-border-subtle);
+  font-size: var(--fg-text-caption);
+  font-variant-numeric: tabular-nums;
+}
+.fg-tele__chip {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  color: var(--fg-text-secondary);
+}
+.fg-tele__k {
+  color: var(--fg-text-tertiary);
+  line-height: 1.2;
+}
+.fg-tele__v {
+  font-size: var(--fg-text-body-sm);
+  font-weight: 600;
+  line-height: 1.25;
+  color: var(--fg-text-primary);
+  white-space: nowrap;
+}
+.fg-tele__note {
+  line-height: 1.2;
+}
+/* 告警只染数值与文字，标签保持中性 —— 整格变红会让四列都在喊 */
+.fg-tele__chip--warn .fg-tele__v,
+.fg-tele__chip--warn .fg-tele__note {
+  color: var(--fg-warning-700);
+}
+.fg-tele__chip--bad .fg-tele__v,
+.fg-tele__chip--bad .fg-tele__note {
+  color: var(--fg-danger-700);
+}
+.fg-tele--stale .fg-tele__chip,
+.fg-tele--stale .fg-tele__uptime {
+  opacity: 0.55;
+}
+.fg-tele--stale .fg-tele__chip--warn,
+.fg-tele--stale .fg-tele__chip--bad {
+  opacity: 1;
+}
+.fg-tele__uptime {
+  grid-column: 1 / -1;
+  margin-top: var(--fg-space-1);
+  padding-top: var(--fg-space-2);
+  border-top: 1px solid var(--fg-border-subtle);
+  color: var(--fg-text-tertiary);
+}
+.fg-tele__fresh {
+  margin: 0;
+  color: var(--fg-text-tertiary);
+  font-size: var(--fg-text-caption);
+}
+
+.fg-formgrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--fg-space-3) var(--fg-space-4);
+}
+.fg-formgrid > .fg-field--full {
+  grid-column: 1 / -1;
+}
+@media (max-width: 720px) {
+  .fg-formgrid { grid-template-columns: 1fr; }
+}
+
+.fg-ingestkey {
+  display: block;
+  padding: var(--fg-space-3);
+  margin: var(--fg-space-2) 0;
+  font-family: var(--fg-font-mono, monospace);
+  font-size: var(--fg-text-body-sm);
+  word-break: break-all;
+  background: var(--fg-bg-subtle, #f5f6f8);
+  border: 1px dashed var(--fg-border-default);
+  border-radius: var(--fg-radius-sm);
+  user-select: all;
+}
+
+/* ==========================================================================
+   V2 · 值班工作台（样板页）
+   --------------------------------------------------------------------------
+   本段只做结构层排版，不定义任何颜色 —— 颜色全部走 tokens.css 与
+   theme-light-v2.css（现役浅色）/ theme-dark.css（夜间模式候选）。
+   三条硬规矩的落点：
+   ① 主角唯一：实时画面去卡片化、顶到边（.fg-live-panel--hero）；
+      其余区块降一档，门灯做成不再多套一层卡片的条（.fg-statusband）。
+   ② 不同角色不共用版式模子：本页是「画面优先」，护士长总览仍是「趋势优先」。
+   ③ 卡片不是唯一层级手段：告警流从「面板里一张张卡」改成「分隔线列表」
+      （.fg-alert-list），同一层级不再套两种容器。
+   ========================================================================== */
+
+/* ---------- 门灯状态带 ---------- */
+.fg-statusband {
+  display: flex;
+  align-items: center;
+  gap: var(--fg-space-4);
+  min-width: 0;
+  /* 2026-11-03 用户要求点位行「稍微小一点」：上下各收一档 */
+  padding: var(--fg-space-1) 0 var(--fg-space-2);
+  border-bottom: 1px solid var(--fg-border-subtle);
+}
+
+.fg-statusband__label {
+  flex-shrink: 0;
+  font-size: var(--fg-text-caption);
+  line-height: var(--fg-leading-caption);
+  color: var(--fg-text-tertiary);
+  letter-spacing: .08em;
+}
+
+.fg-statusband__empty {
+  font-size: var(--fg-text-body-sm);
+  line-height: var(--fg-leading-body-sm);
+  color: var(--fg-text-tertiary);
+}
+
+/* 带子里的门灯排得更紧：它是扫读用的，不是用来读详情的。
+   ⚠️ 必须是 auto-fill，不能是 auto-fit：auto-fit 会把空轨道折叠掉，
+   只有两个点位时每盏灯被拉成半屏宽，一整排「胖条」——这正是用户说
+   「首页点位那一行排版不好」的观感问题。auto-fill 保留空轨道，
+   灯维持固定档宽、从左往右排，点位多少都不变形。 */
+.fg-statusband .fg-doorbar {
+  flex: 1 1 auto;
+  grid-template-columns: repeat(auto-fill, minmax(156px, 1fr));
+}
+
+/* 点位框统一高度（2026-11-03 用户：「每个点位框最好一个大小」）。
+   灯里最多三行——名称 / 状态 / 配置状态（未配置·已配置）；只有两行的框比三行的矮一档，
+   1440 的竖列里一盏一盏排下来就参差不齐（横排靠 grid 拉伸看不出来，竖列露馅）。
+   这里**按三行预留**，等于所有框一样高；内容仍然垂直居中，不会顶到边。
+   行高账：1.35 × (14px 名称 + 12px 状态 + 12px 未配置) ≈ 51px。
+   ⚠️ 只作用于状态带。设备页的卡片（`.fg-devcard`）也复用 `.fg-doorlight`，
+      那边只有一两行，全局预留三行会白出一大块。 */
+.fg-statusband .fg-doorlight__txt {
+  min-height: calc(
+    (var(--fg-text-body-sm) + var(--fg-text-caption) * 2) * 1.35
+  );
+}
+
+/* 骨架叠加层：left/top/width/height 由 _live_overlay_js.html 按 contain 的内容区算，
+   这里只负责定位与不吃鼠标事件（否则挡着播放控件点不到）。 */
+.fg-camera__canvas {
+  position: absolute;
+  display: none;
+  pointer-events: none;
+  z-index: 2;
+}
+
+[data-camera-root].is-playing .fg-camera__canvas {
+  display: block;
+}
+
+/* 未配置摄像头：红灯。
+   点位条现在按点位渲染，没接摄像头的点位会一直在这条带子上——
+   不标红的话，它看起来和「安静」的正常点位一模一样，没人会去配。 */
+.fg-doorlight.is-unconfigured .fg-doorlight__lamp {
+  background: var(--fg-danger-600);
+}
+
+/* 配置状态行（2026-11-03 用户）：未配置 = 红，已配置 = 灰。
+   两种情形共用一行、走同一个元素，只差一个修饰类，所以永远等长等位。
+   ⚠️ 颜色必须挂在这条上，**不能**继承 `.is-alert .fg-doorlight__meta`：
+   告警态把 `__meta` 染成「待处置」色，「已配置」要是跟着变红就自相矛盾了。 */
+.fg-doorlight__flag {
+  font-size: var(--fg-text-caption);
+}
+
+/* 没配摄像头 = 待办，红。 */
+.fg-doorlight__flag.is-missing {
+  color: var(--fg-danger-600);
+}
+
+/* 告警态那盏灯的底色是浅红（--fg-status-pending-bg #F9E3DF），
+   #C63C32 压在上面只有 4.17:1，小字过不了 AA（4.5:1）。
+   同一色系深一档的 --fg-status-pending-fg 是 5.87:1，正好也是这盏灯
+   其它文字的用色 —— 红字在告警态里仍然读得出「这是红色」。
+   ⚠️ 只作用于 is-missing：加上去会让下面那条 is-ok 也变红。 */
+.fg-doorlight.is-alert .fg-doorlight__flag.is-missing {
+  color: var(--fg-status-pending-fg);
+}
+
+/* 已配置 = 平静事实，不是状态告警：三级灰，扫读时不抢注意力。 */
+.fg-doorlight__flag.is-ok {
+  color: var(--fg-text-tertiary);
+}
+
+/* ---------- 工作台改版：处置队列（主）+ 工作区（右） ----------
+   2026-11-02：主区从「按时间倒序的告警流」换成按处置态分段的队列，
+   右栏从「待处置队列」换成常驻工作区。右栏因此要比 320 宽——
+   它现在装的是快照 + 处置结果表单，不是 16:9 小窗。
+   2026-11-03：用户「工作区可以宽一点，队列信息太宽了」⇒ 460 → 540。
+   队列在 ≥1440 的三栏布局下另有压缩规格（见文件末尾「点位竖列」段）。 */
+.fg-split--work {
+  grid-template-columns: minmax(0, 1fr) clamp(460px, 34vw, 540px);
+}
+
+.fg-wq-list {
+  display: flex;
+  flex-direction: column;
+}
+
+/* 一行一条。列宽固定（时间/级别/人/等时）＋位置吃剩余：
+   护士扫读时是按列扫的，列宽一跳，整列都得重新找。 */
+.fg-wq {
+  display: grid;
+  grid-template-columns: 56px 78px minmax(0, 1fr) auto 88px 76px;
+  align-items: center;
+  gap: var(--fg-space-3);
+  padding: var(--fg-space-3) var(--fg-space-5);
+  border-bottom: 1px solid var(--fg-border-subtle);
+  color: inherit;
+  /* 只过渡 background-color：写 background 简写会连 background-image 一起进过渡列表 */
+  transition: background-color var(--fg-motion-fast) var(--fg-ease-out);
+}
+
+.fg-wq:last-child {
+  border-bottom: 0;
+}
+
+.fg-wq:hover {
+  background: var(--fg-bg-table-hover);
+  color: inherit;
+}
+
+/* 选中态 = 工作区正在显示的那一条。
+   左侧 3px 竖条是「你在这儿」的唯一编码，不靠淡底色——投影仪上浅底几乎看不见。 */
+.fg-wq.is-active {
+  background: var(--fg-pine-50);
+  box-shadow: inset 3px 0 0 var(--fg-primary);
+}
+
+.fg-wq:focus-visible {
+  outline: 2px solid var(--fg-primary);
+  outline-offset: -2px;
+}
+
+.fg-wq__time {
+  font-family: var(--fg-font-mono);
+  font-size: var(--fg-text-caption);
+  line-height: 1.25;
+  color: var(--fg-text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+.fg-wq__time b {
+  display: block;
+  font-size: var(--fg-text-body-sm);
+  font-weight: 600;
+  color: var(--fg-text-secondary);
+}
+
+.fg-wq__sev {
+  display: inline-flex;
+  min-width: 0;
+}
+
+.fg-wq__loc {
+  overflow: hidden;
+  font-weight: 600;
+  color: var(--fg-text-primary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fg-wq__person {
+  font-size: var(--fg-text-body-sm);
+  color: var(--fg-text-tertiary);
+  white-space: nowrap;
+}
+
+.fg-wq__who {
+  overflow: hidden;
+  font-size: var(--fg-text-caption);
+  color: var(--fg-text-tertiary);
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fg-wq__wait {
+  font-family: var(--fg-font-mono);
+  font-size: var(--fg-text-body-sm);
+  font-variant-numeric: tabular-nums;
+  color: var(--fg-danger-700);
+  text-align: right;
+}
+
+.fg-wq__wait.is-done {
+  color: var(--fg-text-tertiary);
+}
+
+/* ---------- 工作区 ----------
+   一屏布局（2026-11-03）：宽屏下它填满右栏，只有正文内部滚动；
+   动作条 flex:none，正文 min-height:0 才能收缩滚动。 */
+.fg-work__panel {
+  display: flex;
+  flex-direction: column;
+}
+
+.fg-work__body {
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.fg-work__done {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--fg-space-3);
+  margin-top: var(--fg-space-5);
+  padding-top: var(--fg-space-3);
+  border-top: 1px solid var(--fg-border-subtle);
+  font-size: var(--fg-text-body-sm);
+  color: var(--fg-text-secondary);
+}
+
+/* 动作条：钉在工作区面板顶部、panel__head 之下，body 滚动它不动。
+   flex:none 是关键——body 要能收缩滚动，它不能被一起挤扁。 */
+.fg-work__bar {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--fg-space-2) var(--fg-space-3);
+  padding: var(--fg-space-3) var(--fg-space-5);
+  background: var(--fg-bg-raised);
+  border-bottom: 1px solid var(--fg-border-subtle);
+}
+
+/* ---------- 一屏工作台（2026-11-03） ----------
+   用户要求「页面本身不滚，只有组件内部滚」。
+   白板 / 点位带 / 分段 Tab / 动作条固定，只有**队列列表**和**工作区正文**各自滚动。
+   高度链：.fg-page(flex) → .fg-content(1fr 行) → .fg-split(100%) → 两栏(100%)。
+   窄屏单栏放不下两块，走下面的 <1280 规则退回整页滚动。 */
+@media (min-width: 1280px) {
+  body[data-page="nurse-today"] .fg-page {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    /* 一屏布局下不需要给「页面底部」留 48px，留给队列/工作区 */
+    padding-bottom: var(--fg-space-4);
+  }
+
+  body[data-page="nurse-today"] .fg-content {
+    flex: 1 1 auto;
+    min-height: 0;
+    /* 行 1 白板 / 行 2 点位带 / 行 3 队列+工作区（吃掉剩余高度） */
+    grid-template-rows: auto auto minmax(0, 1fr);
+    align-items: stretch;
+  }
+
+  body[data-page="nurse-today"] .fg-split--work {
+    height: 100%;
+    min-height: 0;
+    align-items: stretch;
+  }
+
+  body[data-page="nurse-today"] .fg-split__main,
+  body[data-page="nurse-today"] .fg-split__side {
+    min-height: 0;
+  }
+
+  /* 队列卡：头 + Tab 固定，列表滚 */
+  body[data-page="nurse-today"] .fg-split__main > .fg-panel {
+    height: 100%;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* 面板头与分段 Tab 是「固定件」，不许被 flex 压扁 */
+  body[data-page="nurse-today"] .fg-split__main .fg-panel__head,
+  body[data-page="nurse-today"] .fg-split__main .fg-tabs,
+  body[data-page="nurse-today"] .fg-work .fg-panel__head {
+    flex: none;
+  }
+
+  body[data-page="nurse-today"] .fg-split__main .fg-panel__body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  /* 工作区：不再是 sticky 浮层，填满右栏；正文滚，动作条不动 */
+  body[data-page="nurse-today"] .fg-work {
+    position: static;
+    height: 100%;
+  }
+
+  body[data-page="nurse-today"] .fg-work__panel {
+    height: 100%;
+    max-height: none;
+  }
+
+  body[data-page="nurse-today"] .fg-work__body {
+    flex: 1 1 auto;
+  }
+}
+
+/* ---------- 工作台三栏：点位竖列 + 队列 + 工作区（≥1440，2026-11-03） ----------
+   用户拍板方案 B：点位从横带改成队列左边的竖列，与队列/工作区同高并齐。
+   为什么只在 ≥1440：三栏并排后队列仍有 ≈420px；1366 下只剩 ≈390px，
+   行内固定列一挤就折行，所以 1366 回退成横带（上面的默认布局）。
+   ⚠️ 这个断点下队列行砍掉「人员#n」列（工作区里有同一信息），
+      列距与内边距各收一档，否则点位名只剩 20px。 */
+@media (min-width: 1440px) {
+  body[data-page="nurse-today"] .fg-content {
+    /* 覆盖 12 栏：点位列固定 160px，其余全给队列 + 工作区 */
+    grid-template-columns: 160px minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  /* 白板与「往期积压」那一行的**外壳**占了原来白板的位置（2026-11-03）：
+     白板被包进 .fg-wb-block 之后就**不再是 .fg-content 的直接子元素**，
+     这两条规则必须跟着挪上来，否则白板落进第一列 160px 里。
+     ⚠️ 用 `1 / -1` 而不是模板里的 `span 12`：这个断点下 .fg-content 只有
+        **2 个显式列**，`span 12` 会凭空造出 10 个隐式列 —— 它们本身宽 0，
+        但 11 个列间距白吃 240px，队列从 ≈500px 塌到 190px（2026-11-03 实测）。 */
+  body[data-page="nurse-today"] .fg-wb-block {
+    grid-column: 1 / -1;
+    grid-row: 1;
+    min-width: 0;
+  }
+
+  body[data-page="nurse-today"] #device-strip {
+    grid-column: 1;
+    grid-row: 2;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--fg-space-2);
+    min-height: 0;
+    padding: 0;
+    border-bottom: 0;
+    overflow: hidden;
+  }
+
+  body[data-page="nurse-today"] #device-strip .fg-statusband__label {
+    flex: none;
+  }
+
+  /* 竖列里一盏灯一行；点位多了在列内滚，不把整行撑高 */
+  body[data-page="nurse-today"] #device-strip .fg-doorbar {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
+    gap: var(--fg-space-2);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding-right: var(--fg-space-1);
+  }
+
+  body[data-page="nurse-today"] .fg-split--work {
+    grid-column: 2;
+    grid-row: 2;
+  }
+
+  /* 四个分段 Tab 在 ≈430px 的队列里要放得下：默认 12px 内边距会把
+     「今日已闭环」的计数挤出面板（1440 实测），收到 8px 正好 400px。
+     —— 2026-11-04 由「本班已闭环」改名，同为 5 字，这个实测仍然成立。 */
+  body[data-page="nurse-today"] .fg-split__main .fg-tab {
+    padding: 0 var(--fg-space-2);
+  }
+
+  /* 窄队列的行规格：时间 / 级别 / 点位（吃剩余） / 接警人 / 等时 */
+  body[data-page="nurse-today"] .fg-wq {
+    grid-template-columns: 50px 70px minmax(0, 1fr) 76px 64px;
+    gap: var(--fg-space-2);
+    padding-inline: var(--fg-space-4);
+  }
+
+  body[data-page="nurse-today"] .fg-wq__person {
+    display: none;
+  }
+}
+
+/* 单栏（<1280）时右栏掉到队列下面：退回文档流，正文不再内部滚动 */
+@media (max-width: 1279px) {
+  .fg-work__body {
+    overflow: visible;
+  }
+}
+
+/* ---------- 主角：实时画面去卡片化 ---------- */
+.fg-live-panel--hero.fg-panel {
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+}
+
+.fg-live-panel--hero > .fg-panel__head {
+  min-height: 40px;
+  padding-left: 0;
+  padding-right: 0;
+  border-bottom: 0;
+}
+
+.fg-live-panel--hero > .fg-panel__body {
+  padding: 0;
+}
+
+/* ---------- 告警流：分隔线列表 ----------
+   border-width 只改宽度、不碰颜色：左侧 6px 的 severity 色条是真实编码，
+   由 .fg-alert--s1/s2/s3 按级别上色，这里不能覆盖它的颜色。 */
+.fg-alert-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.fg-alert-list .fg-alert {
+  padding: var(--fg-space-3) var(--fg-space-2) var(--fg-space-3) var(--fg-space-4);
+  background: transparent;
+  border-width: 0 0 1px 6px;
+  border-radius: 0;
+}
+
+.fg-alert-list .fg-alert:last-child {
+  border-bottom-width: 0;
+}
+
+/* 撤回态仍要一眼看出「这张跟别的不一样」，所以保住那层弱化底 */
+.fg-alert-list .fg-alert.is-retracted {
+  background: var(--fg-neutral-100);
+}
+
+/* ---------- 多摄像头视觉预留：切换条 ----------
+   N>1 才生成 DOM（见 _live_panel.html）；N=1 时这里一条规则都不生效。 */
+.fg-live-nav {
+  display: flex;
+  gap: var(--fg-space-2);
+  padding-top: var(--fg-space-2);
+  overflow-x: auto;
+}
+
+.fg-live-nav__item {
+  flex: 0 0 auto;
+  height: 32px;
+  padding: 0 var(--fg-space-3);
+  border: 1px solid var(--fg-border-default);
+  border-radius: var(--fg-radius-xs);
+  background: transparent;
+  color: var(--fg-text-secondary);
+  font-family: var(--fg-font-ui);
+  font-size: var(--fg-text-body-sm);
+  cursor: pointer;
+}
+
+.fg-live-nav__item:hover {
+  background: var(--fg-bg-table-hover);
+  color: var(--fg-text-primary);
+}
+
+.fg-live-nav__item.is-active {
+  border-color: var(--fg-primary);
+  color: var(--fg-text-primary);
+}
+
+.fg-live-nav__item:focus-visible {
+  outline: 2px solid var(--fg-border-focus);
+  outline-offset: 2px;
+}
+
+/* ==========================================================================
+   点位画面页 /nurse/camera/{point_id}（2026-11-02）
+   --------------------------------------------------------------------------
+   与工作台的 .fg-live 是两个独立组件：
+     · .fg-live 是"顺带瞄一眼"，有 124vh 上限、还有紧凑变体；
+     · .fg-camera 是"专门看一个点位"，画面顶格、宽度撑满内容区。
+   两者共用 --fg-bg-video 那个变量是**不行的**——它其实从没被定义过
+   （app.css 里五处引用都是空的），所以这里直接给实色，不去动全局 token，
+   免得顺手改变工作台现有观感。
+   ========================================================================== */
+
+.fg-camera--full > .fg-panel__body {
+  padding: 0;
+}
+
+.fg-camera__stage {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  max-height: calc(100vh - 240px);
+  background: #10161A;
+  overflow: hidden;
+}
+
+.fg-camera__video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;      /* 不裁画面：走廊边缘恰恰是跌倒最容易发生的地方 */
+}
+
+.fg-camera__ph {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--fg-space-2);
+  padding: var(--fg-space-6);
+  text-align: center;
+  color: #E8EEEB;
+}
+
+.fg-camera__badge {
+  font-size: var(--fg-text-h3);
+  line-height: var(--fg-leading-h3);
+  font-weight: 600;
+}
+
+.fg-camera__hint {
+  margin: 0;
+  max-width: 46ch;
+  font-size: var(--fg-text-body-sm);
+  line-height: var(--fg-leading-body-sm);
+  opacity: 0.82;
+}
+
+/* 标题栏右侧的状态字：不给颜色就没法一眼分"能看/不能看" */
+.fg-camera__state {
+  font-size: var(--fg-text-body-sm);
+  color: var(--fg-text-tertiary);
+}
+
+.fg-camera__state.is-live  { color: var(--fg-success-600); }
+.fg-camera__state.is-off   { color: var(--fg-text-tertiary); }
+.fg-camera__state.is-error { color: var(--fg-danger-600); }
+
+/* --------------------------------------------------------------------------
+   病区画面墙 /head/camera（2026-11-04）
+   左列点位竖排（可多选）+ 右侧宫格：1 路铺满、2–4 路两列、5–9 路三列。
+   与 .fg-camera 的分工：那是「盯住一个点位」，这里是「扫一片」。
+   选择态与格子都由 camera-wall.js 维护，这里只管长相。
+   -------------------------------------------------------------------------- */
+.fg-camwall {
+  grid-column: span 12;
+  display: grid;
+  grid-template-columns: 248px minmax(0, 1fr);
+  gap: var(--fg-grid-gap);
+  align-items: start;
+}
+
+.fg-camwall__list {
+  display: flex;
+  flex-direction: column;
+  padding: var(--fg-space-2) 0;
+  background: var(--fg-bg-surface);
+  border: 1px solid var(--fg-border-default);
+  border-radius: var(--fg-radius-sm);
+  max-height: calc(100vh - var(--fg-topbar-h) - 150px);
+  overflow: auto;
+}
+
+.fg-camwall__hint {
+  margin: 0;
+  padding: 0 var(--fg-space-4) var(--fg-space-2);
+  color: var(--fg-text-tertiary);
+  font-size: var(--fg-text-caption);
+  line-height: var(--fg-leading-caption);
+}
+
+/* 左列一项 = 一个 <button>（整行可点、可键盘聚焦） */
+.fg-campt {
+  display: flex;
+  align-items: center;
+  gap: var(--fg-space-2);
+  width: 100%;
+  padding: var(--fg-space-2) var(--fg-space-4);
+  border: 0;
+  border-left: 3px solid transparent;
+  background: none;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+}
+
+.fg-campt:hover { background: var(--fg-bg-table-hover); }
+
+.fg-campt.is-on {
+  background: var(--fg-bg-table-selected);
+  border-left-color: var(--fg-primary);
+}
+
+.fg-campt__lamp {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--fg-neutral-300);
+}
+.fg-campt__lamp.is-alert { background: var(--fg-danger-600); }
+.fg-campt__lamp.is-ok    { background: var(--fg-success-600); }
+.fg-campt__lamp.is-warn  { background: var(--fg-warning-600); }
+.fg-campt__lamp.is-off   { background: var(--fg-neutral-400); }
+
+.fg-campt__body {
+  min-width: 0;
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.fg-campt__name {
+  color: var(--fg-text-primary);
+  font-size: var(--fg-text-body-sm);
+  line-height: var(--fg-leading-body-sm);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fg-campt__meta {
+  color: var(--fg-text-tertiary);
+  font-size: var(--fg-text-caption);
+  line-height: var(--fg-leading-caption);
+}
+
+.fg-campt__check { flex: none; display: none; color: var(--fg-primary); }
+.fg-campt.is-on .fg-campt__check { display: inline-flex; }
+
+.fg-camwall__stage {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--fg-space-3);
+}
+
+.fg-camwall__notice {
+  margin: 0;
+  padding: var(--fg-space-2) var(--fg-space-3);
+  border: 1px solid var(--fg-warning-100);
+  border-radius: var(--fg-radius-xs);
+  background: var(--fg-warning-50);
+  color: var(--fg-warning-700);
+  font-size: var(--fg-text-body-sm);
+  line-height: var(--fg-leading-body-sm);
+}
+
+.fg-camwall__empty {
+  margin: 0;
+  padding: var(--fg-space-16) 0;
+  text-align: center;
+  color: var(--fg-text-tertiary);
+  font-size: var(--fg-text-body-sm);
+  border: 1px dashed var(--fg-border-default);
+  border-radius: var(--fg-radius-sm);
+}
+
+.fg-camwall__grid {
+  display: grid;
+  gap: var(--fg-space-3);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+/* 空时整块不占位，否则「从左侧选择点位」下面还留一条虚线格 */
+.fg-camwall__grid[data-count="0"] { display: none; }
+.fg-camwall__grid[data-count="1"] { grid-template-columns: minmax(0, 1fr); }
+.fg-camwall__grid[data-count="2"],
+.fg-camwall__grid[data-count="3"],
+.fg-camwall__grid[data-count="4"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+.fg-camcell {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: var(--fg-bg-surface);
+  border: 1px solid var(--fg-border-default);
+  border-radius: var(--fg-radius-sm);
+  overflow: hidden;
+}
+
+.fg-camcell__head {
+  display: flex;
+  align-items: center;
+  gap: var(--fg-space-2);
+  padding: var(--fg-space-2) var(--fg-space-3);
+  border-bottom: 1px solid var(--fg-border-subtle);
+}
+
+.fg-camcell__name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+  color: var(--fg-text-primary);
+  font-size: var(--fg-text-body-sm);
+}
+
+.fg-camcell__head .fg-camera__state { flex: none; white-space: nowrap; }
+
+.fg-camcell__solo {
+  flex: none;
+  color: var(--fg-text-tertiary);
+  font-size: var(--fg-text-caption);
+  white-space: nowrap;
+}
+.fg-camcell__solo:hover { color: var(--fg-link); }
+
+.fg-camcell__stage {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  background: #10161A;
+  overflow: hidden;
+}
+
+.fg-camcell__video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+/* 小格里的占位文案降一级字号：大画面那套 18px 在 350px 宽的格子里会折三行 */
+.fg-camcell__stage .fg-camera__badge { font-size: var(--fg-text-body-sm); }
+.fg-camcell__stage .fg-camera__hint  { font-size: var(--fg-text-caption); }
+
+.fg-camcell__foot {
+  padding: var(--fg-space-2) var(--fg-space-3);
+  border-top: 1px solid var(--fg-border-subtle);
+}
+
+@media (max-width: 1100px) {
+  .fg-camwall { grid-template-columns: minmax(0, 1fr); }
+  .fg-camwall__list { max-height: 240px; }
+  .fg-camwall__grid[data-count="2"],
+  .fg-camwall__grid[data-count="3"],
+  .fg-camwall__grid[data-count="4"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+/* 手机上一律单列：三列宫格在 390px 宽下每格只有 110px，画面等于看不见 */
+@media (max-width: 767px) {
+  .fg-camwall__grid[data-count] { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* 告警表紧贴面板边：表格自带内边距，再套一层面板内边距就是双份留白 */
+.fg-camera__events {
+  padding: 0;
+}
+
+/* ---------- 一屏点位画面页（2026-11-03） ----------
+   用户：「排版好一点，最好不要可以滑动，放在一个页面里」。
+   下半屏的告警表在同一天删掉之后，这一页只剩一块画面 —— 那就让它吃满剩下的高度。
+   高度链与工作台同一套：.fg-page(flex) → .fg-content(1fr 行) → 面板(flex) → stage。
+   ⚠️ stage 在这里**放弃 16:9**（aspect-ratio: auto）：高度由容器给，
+      画面靠 object-fit: contain 自己留边。否则「按宽算 16:9」必然比剩余高度高，
+      再小的窗口都会顶出一条滚动条 —— 那正是这次要消掉的东西。
+   窄屏（<1280）不放一屏：手机纵向本来就该整页滚，画面按 16:9 排在上面。 */
+@media (min-width: 1280px) {
+  body[data-page="nurse-camera"] .fg-page {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    padding-bottom: var(--fg-space-4);
+  }
+
+  body[data-page="nurse-camera"] .fg-content {
+    flex: 1 1 auto;
+    min-height: 0;
+    grid-template-rows: minmax(0, 1fr);
+    /* ⚠️ .fg-content 默认 align-items: start，栅格项不会被拉高 ——
+       少了这句，面板只按内容（= 标题条）那么高，画面直接塌成 0。 */
+    align-items: stretch;
+  }
+
+  body[data-page="nurse-camera"] .fg-camera--full {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+
+  body[data-page="nurse-camera"] .fg-camera--full > .fg-panel__body {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  body[data-page="nurse-camera"] .fg-camera__stage {
+    flex: 1 1 auto;
+    min-height: 0;
+    aspect-ratio: auto;
+    max-height: none;
+  }
+}
+
+/* 点位表里的行内保存：输入框 + 按钮同一行，不换行 */
+.fg-inline-form {
+  display: flex;
+  align-items: center;
+  gap: var(--fg-space-2);
+  margin: 0;
+}
+
+.fg-inline-form .fg-input {
+  flex: 1 1 auto;
+  min-width: 10ch;
+}
+
+
+/* --------------------------------------------------------------------------
+   病区总览一屏（2026-11-04）
+   --------------------------------------------------------------------------
+   用户要求：「把 24 小时告警分布提到处置队列之前，把病区总览四个大字去掉，
+   把导出按钮放到下面，尽量使所有功能在一个页面」。
+
+   高度账（无头 Edge 实测，见交付说明）：
+     1920×1080（可用 915）：瘦页头 4 + KPI 130 + 16 + 图 236 + 16
+                            + 队列行（吃剩余 ≈475）+ 16 + 底部行 32 = 915 ✓ 不滚
+     1440×900 （可用 735）：同上固定部分 ≈458，队列行吃到 277 —— 仍然一屏，
+                            队列 5 条放不下时**列表内部滚**，页面不滚。
+     1366×768 （可用 603）：固定部分就已经 458，队列行吃 280 下限后整页溢出
+                            ⇒ .fg-page 自己滚（它本来就有 overflow-y:auto）。
+                            ⚠️ 这一档不要靠继续压高度去硬凑：再压就得把 KPI 数字
+                            或队列行砍到不可读，宁可让整页滚 130px。
+
+   ⚠️ 队列/处置人两个面板在这条断点下是 flex 列：面板头 flex:none 常驻，
+      列表 flex:1 + overflow-y:auto 自己滚。app.js 的 swapRegions 会把
+      队列滚动位置带过去（ovScroll），否则 30 秒一刷新就回顶。
+   -------------------------------------------------------------------------- */
+.fg-overview-foot {
+  grid-column: span 12;
+  display: flex;
+  align-items: center;
+  gap: var(--fg-space-4);
+  min-width: 0;
+}
+
+/* 没有「今日撤回」那一句时按钮也要靠右，所以用 auto margin 而不是 space-between */
+.fg-overview-foot .fg-btn {
+  margin-left: auto;
+  flex: none;
+}
+
+/* ---- 这一页专属的瘦身：只在本页生效，别的页面照旧 ---- */
+body[data-page="head-overview"] .fg-page-head--slim {
+  /* 大标题已搬进 sr-only，页头只留一条缝。
+     ⚠️ 这条缝必须 == .fg-content 的 row-gap（下面那条 24→16 的同页覆盖），
+        用户 2026-11-04：「5 个数值框和页眉的距离应该和它下面 24 小时分布的距一致」。
+        顶栏→KPI 与 KPI→图 是同一个视觉节奏，差 4px 都能看出来。
+        改一个就得改另一个 —— 两个都写成 --fg-space-4。 */
+  padding-bottom: var(--fg-space-4);
+}
+
+/* 柱区 200 → 120：这张图要读的是"形状"（几点忙），不是单根柱的精确高度，
+   而它现在要和 5 张 KPI 卡抢同一屏的高度。每根柱的条数仍写在 tooltip 里。 */
+body[data-page="head-overview"] .fg-bars {
+  height: 120px;
+}
+
+body[data-page="head-overview"] [data-refresh-region="hourly-chart"] > .fg-panel__body {
+  padding: var(--fg-space-3) var(--fg-space-5);
+}
+
+/* KPI 卡收 4px 上下内边距：5 张卡横排占满整幅，48px 的数字不需要 16px 的呼吸 */
+body[data-page="head-overview"] .fg-kpi {
+  padding-top: var(--fg-space-3);
+  padding-bottom: var(--fg-space-3);
+}
+
+@media (min-width: 1280px) {
+  body[data-page="head-overview"] .fg-page {
+    display: flex;
+    flex-direction: column;
+    /* 一屏布局不给「页面底部」留 48px，留给队列 */
+    padding-bottom: var(--fg-space-4);
+  }
+
+  body[data-page="head-overview"] .fg-content {
+    flex: 1 1 auto;
+    min-height: 0;
+    /* 行 1 KPI / 行 2 24h 图 / 行 3 队列 + 处置人（吃剩余）/ 行 4 底部工具行 */
+    grid-template-rows: auto auto minmax(280px, 1fr) auto;
+    align-items: stretch;
+    /* 24 → 16：一屏里四行之间省下 24px，密一点但不挤 */
+    row-gap: var(--fg-space-4);
+  }
+
+  body[data-page="head-overview"] #overview-queue,
+  body[data-page="head-overview"] #overview-handlers {
+    height: 100%;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  body[data-page="head-overview"] #overview-queue > .fg-panel__head,
+  body[data-page="head-overview"] #overview-handlers > .fg-panel__head {
+    flex: none;
+  }
+
+  body[data-page="head-overview"] #overview-queue > .fg-queue,
+  body[data-page="head-overview"] #overview-handlers > .fg-handlers {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+}
+
+/* 矮屏兜底（视口高 ≤820，典型 1366×768）：这一档实测只差 34px 就能一屏，
+   把柱区再收一档 + 图体上下内边距收到 8px + 页底留白 8px，正好补上，
+   换取「导出」不滚也能看见。
+   ⚠️ 不再往下压 KPI 数字 / 队列行：那两个是这一页的主信息，
+      宁可让队列内部多滚一行（列表本来就自己滚）。 */
+@media (min-width: 1280px) and (max-height: 820px) {
+  /* 信息科首页同一档：768 高的笔记本上，图每矮 10px 设备表就多露 1/5 行 ——
+     这张图只用来扫一眼有没有断流，裁到 110 照样读得出高低。 */
+  body[data-page="admin-overview"] .fg-bars { height: 110px; }
+
+  body[data-page="head-overview"] .fg-bars {
+    /* 92 → 80：页头那条缝从 4px 改成 16px（= 行距）之后，这一档要多让出 10px。
+       让给图，不动队列行 —— 队列本来就是这一档唯一被压缩的东西。 */
+    height: 80px;
+  }
+
+  body[data-page="head-overview"] [data-refresh-region="hourly-chart"] > .fg-panel__body {
+    padding: var(--fg-space-2) var(--fg-space-5);
+  }
+
+  body[data-page="head-overview"] .fg-page {
+    padding-bottom: var(--fg-space-2);
+  }
+}
+
+/* 手机上底部工具行竖排：那句撤回说明本来就长，横排会把导出按钮挤成一小块 */
+@media (max-width: 767px) {
+  .fg-overview-foot {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .fg-overview-foot .fg-btn {
+    margin-left: 0;
+    justify-content: center;
+  }
+}
+
+/* ==========================================================================
+   人员与账号（2026-11-04 第二轮）：四项工作量带 + 人员档案抽屉
+   ========================================================================== */
+/* 白板原本写死 3 列（护士端专用），这里加一个 4 列变体。
+   ⚠️ 必须留在文件末尾：上面的 @media (max-width:1023px / 767px) 会把
+      .fg-whiteboard 改回 3 / 2 列，同权重下后写的赢 —— 变体连媒体查询一起写，
+      否则窄屏会被撑成 4 列。 */
+.fg-whiteboard--4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+
+.fg-staff-events {
+  display: flex;
+  flex-direction: column;
+  gap: var(--fg-space-2);
+}
+
+.fg-staff-event {
+  display: flex;
+  align-items: center;
+  gap: var(--fg-space-2);
+  min-width: 0;
+  padding: var(--fg-space-2) var(--fg-space-3);
+  border: 1px solid var(--fg-border-subtle);
+  border-radius: var(--fg-radius-sm);
+  color: inherit;
+  text-decoration: none;
+}
+
+.fg-staff-event:hover { background: var(--fg-bg-table-hover); }
+
+.fg-staff-event__time {
+  flex: none;
+  font-family: var(--fg-font-mono);
+  font-size: var(--fg-text-caption);
+  line-height: var(--fg-leading-caption);
+  color: var(--fg-text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+.fg-staff-event__loc {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  font-size: var(--fg-text-body-sm);
+  line-height: var(--fg-leading-body-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fg-staff-event__tag { flex: none; }
+
+.fg-staff-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--fg-space-2);
+  padding-top: var(--fg-space-4);
+  border-top: 1px solid var(--fg-border-default);
+}
+
+@media (max-width: 1023px) {
+  .fg-whiteboard--4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+/* --------------------------------------------------------------------------
+   人员档案抽屉（2026-11-04 第二轮：用户「太简陋」）
+   身份块用姓名首字做头像，**不挂登录名/拼音**；今日三个数走大号等宽数字，
+   和护士端白板同一套语言；误报率用一条 6px 横条，避免再来一排灰标签。
+   -------------------------------------------------------------------------- */
+.fg-pcard {
+  display: flex;
+  flex-direction: column;
+  gap: var(--fg-space-6);
+}
+
+.fg-pcard__head {
+  display: flex;
+  align-items: center;
+  gap: var(--fg-space-3);
+}
+
+.fg-pcard__avatar {
+  width: 48px;
+  height: 48px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--fg-pine-50);
+  border: 1px solid var(--fg-pine-100);
+  color: var(--fg-primary);
+  font-size: var(--fg-text-h3);
+  font-weight: 600;
+}
+
+.fg-pcard__id {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.fg-pcard__name {
+  overflow: hidden;
+  font-size: var(--fg-text-h2);
+  line-height: var(--fg-leading-h2);
+  font-weight: 600;
+  color: var(--fg-text-primary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fg-pcard__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--fg-space-1);
+  margin-top: 4px;
+}
+
+.fg-pstats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  background: var(--fg-bg-raised);
+  border: 1px solid var(--fg-border-default);
+  border-radius: var(--fg-radius-sm);
+}
+
+.fg-pstat {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  padding: var(--fg-space-3) var(--fg-space-4);
+  border-left: 1px solid var(--fg-border-subtle);
+}
+
+.fg-pstat:first-child { border-left: 0; }
+
+.fg-pstat__k {
+  font-size: var(--fg-text-caption);
+  line-height: var(--fg-leading-caption);
+  color: var(--fg-text-tertiary);
+}
+
+.fg-pstat__v {
+  font-family: var(--fg-font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 28px;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--fg-text-primary);
+}
+
+/* 误报数不是零就换警示色：这是「这个人今天标了几条误报」，护士长会盯的数 */
+.fg-pstat__v.is-warn { color: var(--fg-status-pending-fg); }
+
+.fg-pbar-row {
+  display: flex;
+  align-items: center;
+  gap: var(--fg-space-3);
+  margin-top: var(--fg-space-3);
+}
+
+.fg-pbar-row__k {
+  flex: none;
+  font-size: var(--fg-text-caption);
+  color: var(--fg-text-tertiary);
+}
+
+.fg-pbar {
+  flex: 1 1 auto;
+  height: 6px;
+  overflow: hidden;
+  background: var(--fg-bg-table-head);
+  border-radius: 999px; /* unslop-ignore: 6px 高进度条的圆头，不是药丸按钮 */
+}
+
+.fg-pbar__fill {
+  display: block;
+  height: 100%;
+  background: var(--fg-status-pending-fg);
+  border-radius: inherit;
+}
+
+.fg-pbar-row__v {
+  flex: none;
+  font-family: var(--fg-font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--fg-text-body-sm);
+  color: var(--fg-text-secondary);
+}
+
+.fg-pcard__note {
+  margin-top: var(--fg-space-2);
+  font-size: var(--fg-text-body-sm);
+  line-height: var(--fg-leading-body-sm);
+  color: var(--fg-text-secondary);
+}
+
+.fg-pcard__note b {
+  font-weight: 600;
+  color: var(--fg-text-primary);
+}
+
+.fg-zone-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--fg-space-2);
+}
+
+.fg-zone-chip {
+  padding: 2px var(--fg-space-2);
+  border: 1px solid var(--fg-border-default);
+  border-radius: var(--fg-radius-xs);
+  background: var(--fg-bg-raised);
+  font-size: var(--fg-text-body-sm);
+  line-height: var(--fg-leading-body-sm);
+  color: var(--fg-text-secondary);
+}
+
+/* --------------------------------------------------------------------------
+   头像卡片（2026-11-04：「我的」页删除，内容搬进 .fg-usermenu__panel）
+   -------------------------------------------------------------------------- */
+/* 今日三个数：数字在上、标签在下，和档案抽屉的 .fg-pstat 是同一套语言，
+   但这里更小 —— 卡片宽度只有 320，数字大了三个就挤不下。 */
+.fg-usermenu__stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  /* 不额外内缩：整块与上下 item 的左右边缘对齐（item 自身有 12px 内边距），
+     里面的字自然落在同一条竖线上。 */
+  margin: 0 0 var(--fg-space-2);
+  background: var(--fg-bg-surface);
+  border: 1px solid var(--fg-border-subtle);
+  border-radius: var(--fg-radius-xs);
+}
+
+.fg-usermenu__stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding: var(--fg-space-2) var(--fg-space-3);
+  border-left: 1px solid var(--fg-border-subtle);
+}
+
+.fg-usermenu__stat:first-child { border-left: 0; }
+
+.fg-usermenu__stat em {
+  overflow: hidden;
+  font-size: var(--fg-text-caption);
+  font-style: normal;
+  line-height: var(--fg-leading-caption);
+  color: var(--fg-text-tertiary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fg-usermenu__stat b {
+  overflow: hidden;
+  font-family: var(--fg-font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--fg-text-h3);
+  font-weight: 600;
+  line-height: 1.1;
+  color: var(--fg-text-primary);
+  /* 「1′05″」「2h03m」这些时长串不能被折成两行（中位响应那一栏最窄） */
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* `.fg-usermenu__foot`（个人卡片页脚「N/M 台设备启用 · 模型 vXXXX」）
+   2026-11-05 随该行一起删除：main 规则 + `a` 规则都没了，
+   标签也不会再渲染（base.html 里那条 include 已删）。见 base.html 同名注释。 */

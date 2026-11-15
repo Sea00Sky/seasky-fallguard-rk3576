@@ -1,0 +1,469 @@
+{# ==========================================================================
+   点位与画面 /head/points、/admin/points（2026-11-05 六改）
+   上下文：points[]（含 device_id / device_code / stream_path / device_active）
+          devices[]（绑定下拉的候选）、zones[]、wards[]
+
+   模型（用户拍板）：
+   - 点位：可选绑定**一台设备**（point.device_id），自己不存流。
+   - 设备：装在哪 + **推哪条流**（device.stream_path），在设备页维护。
+   - 画面地址 = 绑定设备推的那条流；没绑 / 没填流 = 未配置。
+
+   ⚠️ 这一页**不碰设备台账**：改名/挪区域只影响点位，绝不去改 device 的安装登记。
+      五改-2 曾让保存点位把设备搬走，409病房 就是这么空的。
+   ========================================================================== #}
+{% extends "base.html" %}
+{% from "_macros.html" import icon, empty_state %}
+{% set admin_mode = admin_mode if admin_mode is defined and admin_mode else false %}
+{% set base = '/admin/points' if admin_mode else '/head/points' %}
+{% set ward_list = wards if wards is defined and wards else [] %}
+{% set ward_names = {} %}
+{% for _w in ward_list %}{% set _ = ward_names.update({_w.ward_id: _w.ward_name}) %}{% endfor %}
+
+{% block title %}点位与画面 · 衡护 HENGUARD{% endblock %}
+{% block page_key %}head-points{% endblock %}
+{% block html_theme %}{{ 'v2' if admin_mode is defined and admin_mode else 'light' }}{% endblock %}
+{% block theme_color %}{{ '#F4F6F4' if admin_mode is defined and admin_mode else '#EDF1EE' }}{% endblock %}
+{% block page_title %}<span class="fg-sr-only">点位与画面</span>{% endblock %}
+{% block page_head_class %} fg-page-head--slim{% endblock %}
+{#- 九改（2026-11-06）：页头副标题整块删（用户点名两句），页头也不再挂动作按钮 ——
+    新增点位 / 新增区域 / 刷新 全部下移到面板头右上角，紧挨着卡片上的「管理设备」。
+    页头只剩标题后 `{% block actions %}` 为空，`fg-page-actions:empty` 会整条不渲染。
+    追加（同一轮）：用户「这个页面的首页大字也不要」⇒ 标题也搬进 sr-only + 瘦页头，
+    与 /alerts、/head/events、病区画面同一套（h1 仍在 DOM，读屏与导航高亮不受影响）。 -#}
+
+{% block content %}
+{% set point_list = points if points is defined and points else [] %}
+{% set device_list = devices if devices is defined and devices else [] %}
+{% set zone_list = zones if zones is defined and zones else [] %}
+{% set ward_list = wards if wards is defined and wards else [] %}
+{% set pbl = pending_by_location if pending_by_location is defined and pending_by_location else {} %}
+{#- 十一改：`ward_layer` 提到最前面 —— 筛选栏要用它决定「给不给病区下拉」，
+    而它原来在第 138 行（渲染病区层时才定义），那时筛选栏早画完了。
+    只有管理员为真；护士长只有一个病区，不加层也不给病区筛选。 -#}
+{% set ward_layer = admin_mode %}
+
+<section class="fg-panel fg-col-12" data-refresh-region="points-main">
+  <div class="fg-panel__head">
+    <h2 class="fg-panel__title">点位</h2>
+    {#- 九改：动作按钮从页头搬到这里（右上角）；副标题那句「一个点位最多显示一台设备…」删净。 -#}
+    <div class="fg-panel__actions">
+      {% if admin_mode %}
+      {#- 十改：新建病区排在最前 —— 它是这三件里最外层的一件（病区 ⊃ 区域 ⊃ 点位）。 -#}
+      <a class="fg-btn fg-btn--secondary fg-btn--sm" href="{{ base }}?ward=1"
+         data-detail-open="{{ base }}?ward=1">{{ icon('overview', 16) }}新建病区</a>
+      <a class="fg-btn fg-btn--primary fg-btn--sm" href="{{ base }}?point=1"
+         data-detail-open="{{ base }}?point=1">{{ icon('map-pin', 16) }}新增点位</a>
+      <a class="fg-btn fg-btn--secondary fg-btn--sm" href="{{ base }}?zone=1"
+         data-detail-open="{{ base }}?zone=1">{{ icon('filter', 16) }}新增区域</a>
+      {% endif %}
+      <a class="fg-btn fg-btn--secondary fg-btn--sm" href="{{ base }}" data-refresh>{{ icon('refresh', 16) }}刷新</a>
+    </div>
+  </div>
+  {% if point_list %}
+  <div class="fg-panel__body">
+    {% set bound_n = point_list | selectattr('device_id') | list | length %}
+    {% set unbound_n = point_list|length - bound_n %}
+    {% set zone_labels = {'corridor': '走廊', 'ward_room': '病房', 'bathroom': '卫生间',
+                          'dayroom': '活动室', 'stairwell': '楼梯间',
+                          'nurse_station': '护士站', 'other': '其他'} %}
+    {#- 九改：筛选栏（纯前端，不重查服务端）——
+       这张页就几张卡，没必要为了筛一下跑一趟 SQL；更关键的是筛选要能
+       **连区域分组一起隐藏**（某区域筛空了还留个光秃秃的组标题最碍眼），
+       服务端筛的话分组逻辑得跟着重写一遍。 -#}
+    <div class="fg-filters fg-filters--panel" role="search">
+      <div class="fg-field">
+        <label class="fg-label" for="pf-q">搜索</label>
+        <input class="fg-input" type="search" id="pf-q" autocomplete="off"
+               placeholder="点位名 / 告警地点 / 设备码" data-point-filter="q">
+      </div>
+      {#- 十一改（2026-11-06）：按 **病区 / 区域** 筛。
+          ① 病区下拉只给管理员 —— 护士长只有一个病区，一个只有一项的下拉是噪音
+             （与十改「护士长不加层」同一条理由）；
+          ② 区域下拉用 <optgroup> 按病区分组：选项文字只留区域名，不挤，也不会
+             让两个病区里同名的「东走廊」分不清；
+          ③ **不与病区联动**（用户拍板）：选了矛盾组合就显示空态，
+             比多 10 行联动 JS（还要处理「换病区时清掉已选区域」）划算。
+          ④ 选项源是 `zone_list`（含停用区域）—— 停用区域里的点位还在页面上，
+             筛它得筛得出来；「未分组」段不是区域，**不作为选项**（筛选是找东西，不是盘点）。
+          ⑤ 六个下拉全加 `autocomplete="off"`：浏览器**表单状态恢复**是在内联脚本跑完之后
+             才回填的（这正是搜索框一直带着它的原因，见下方 `apply()` 首次调用的注释）。
+             少一个，恢复出来的下拉值就和 `hidden` 卡片的实际筛选状态对不上 ——
+             控制项显示「4F-A」而卡片还是全部。原来三个下拉也没有，是同一处漏洞，
+             这回一并补齐（web-design-guidelines：非登录字段加 `autocomplete="off"`）。
+          ⑥ **2026-11-06 追加（用户：「我选了对应病区的时候，区域就应该只有对应病区的啊」）**：
+             改**单向联动** —— 选病区后，区域下拉里只留这个病区的组；之前选的区域若不属于
+             新病区，自动回落到「全部」（用户拍板；反向不带：单独选区域时病区仍是「全部」）。
+             ⚠️ 实现是**把 `<optgroup>` 移出/移回 `<select>`**，不是给 option 打 `hidden`
+             （`hidden` 在部分浏览器对 option/optgroup 不生效），也不是在 JS 里重建选项 ——
+             选项数据**始终只有服务端渲染的那一份**，JS 只搬运节点。 -#}
+      {% if ward_layer and ward_list|length > 1 %}
+      <div class="fg-field">
+        <label class="fg-label" for="pf-ward">病区</label>
+        <select class="fg-select" id="pf-ward" autocomplete="off" data-point-filter="ward">
+          <option value="">全部</option>
+          {% for w in ward_list %}
+          <option value="{{ w.ward_id }}">{{ w.ward_name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      {% endif %}
+      {% if zone_list %}
+      <div class="fg-field">
+        <label class="fg-label" for="pf-zone">区域</label>
+        <select class="fg-select" id="pf-zone" autocomplete="off" data-point-filter="zone">
+          <option value="">全部</option>
+          {% if ward_layer %}
+            {% for w in ward_list %}
+              {% set wz = zone_list | selectattr('ward_id', 'equalto', w.ward_id) | list %}
+              {% if wz %}
+          <optgroup label="{{ w.ward_name }}" data-ward="{{ w.ward_id }}">
+            {% for z in wz %}<option value="{{ z.zone_id }}">{{ z.name }}</option>{% endfor %}
+          </optgroup>
+              {% endif %}
+            {% endfor %}
+          {% else %}
+            {% for z in zone_list %}<option value="{{ z.zone_id }}">{{ z.name }}</option>{% endfor %}
+          {% endif %}
+        </select>
+      </div>
+      {% endif %}
+      <div class="fg-field">
+        <label class="fg-label" for="pf-bound">绑定</label>
+        <select class="fg-select" id="pf-bound" autocomplete="off" data-point-filter="bound">
+          <option value="">全部</option>
+          <option value="1">已绑设备</option>
+          <option value="0">未绑定</option>
+        </select>
+      </div>
+      <div class="fg-field">
+        <label class="fg-label" for="pf-stream">画面</label>
+        <select class="fg-select" id="pf-stream" autocomplete="off" data-point-filter="stream">
+          <option value="">全部</option>
+          <option value="1">已配置</option>
+          <option value="0">未配置</option>
+        </select>
+      </div>
+      <div class="fg-field">
+        <label class="fg-label" for="pf-state">状态</label>
+        <select class="fg-select" id="pf-state" autocomplete="off" data-point-filter="state">
+          <option value="">全部</option>
+          <option value="online">在线</option>
+          <option value="offline">离线</option>
+          <option value="unbound">未绑定</option>
+          <option value="disabled">已停用</option>
+        </select>
+      </div>
+      <div class="fg-filters__tail">
+        <span class="fg-filter__count">
+          <b data-point-shown>{{ point_list|length }}</b> / {{ point_list|length }} 个点位
+        </span>
+        <button type="button" class="fg-btn fg-btn--ghost fg-btn--sm"
+                data-point-reset hidden>清除筛选</button>
+      </div>
+    </div>
+
+    <div class="fg-freshbar">
+      <span class="fg-freshbar__item">
+        <span class="fg-freshbar__k">点位</span>
+        <span class="fg-freshbar__v">{{ point_list|length }} 个</span>
+      </span>
+      <span class="fg-freshbar__item">
+        <span class="fg-freshbar__k">已绑设备</span>
+        <span class="fg-freshbar__v">{{ bound_n }} 个</span>
+      </span>
+      <span class="fg-freshbar__item">
+        <span class="fg-freshbar__k">未绑定</span>
+        <span class="fg-freshbar__v {% if unbound_n %}is-danger{% endif %}">{{ unbound_n }} 个</span>
+      </span>
+      <span class="fg-freshbar__item">
+        <span class="fg-freshbar__k">区域</span>
+        <span class="fg-freshbar__v">{{ zone_list|length }} 个</span>
+      </span>
+    </div>
+
+    {#- 十改（2026-11-06）：**病区 → 区域 → 卡片** 三层。
+        `ward_groups` 由 `main._ward_groups()` 在服务端分好桶 —— 两条入口
+        （/admin/points、/head/points）共用同一份分桶，模板里只写一遍渲染。
+        `ward_layer` 只有管理员为真：护士长只有一个病区，给她加个大标题是废话
+        （用户拍板「三个方案都不给护士长加层」）。她那一份 `ward_groups` 只有一项，
+        不画标题时输出与九改前逐字相同。
+        ⚠️ 标题层级：管理员是 h2(面板) → **h3(病区)** → **h4(区域)**；护士长没有
+           病区标题，区域仍是 h3 —— 不能一刀切成 h4，否则她的页面从 h2 跳到 h4 断层。
+           同一个 `.fg-zone-group__name` 类别在两张页面上元素不同，样式是按类挂的，不受影响。 -#}
+    {% set ward_groups = ward_groups if ward_groups is defined else [] %}
+    {#- `ward_layer` 已在文件最前面定义（十一改：筛选栏也要用它），这里不再重复 set。 -#}
+    {% for wg in ward_groups %}
+    {#- ⚠️ `--titled` 只在**真画了病区标题**时加：区域那层缩进 + 左侧竖线是挂在这个修饰类
+        上的，不是挂在 `.fg-ward-group` 上。否则护士长（不画标题）的区域会平白缩进去、
+        还多一条没有由头的竖线。 -#}
+    <section class="fg-ward-group{% if ward_layer %} fg-ward-group--titled{% endif %}"
+             data-ward-group data-ward="{{ wg.ward_id }}">
+      {% if ward_layer %}
+      <div class="fg-ward-group__head">
+        <h3 class="fg-ward-group__title">{{ wg.ward_name }}</h3>
+        {#- translate="no"：病区编码是标识符（4F-A），别让浏览器自动翻译搅成别的字 -#}
+        <span class="fg-ward-group__code" translate="no">{{ wg.ward_id }}</span>
+        {% if wg.floor %}<span class="fg-ward-group__meta">{{ wg.floor }}</span>{% endif %}
+        <span class="fg-ward-group__meta">{{ wg.zone_total }} 个区域 · {{ wg.point_total }} 个点位 · {{ wg.bound_total }} 台已绑设备</span>
+        <a class="fg-btn fg-btn--ghost fg-btn--sm" href="{{ base }}?ward_edit={{ wg.ward_id }}"
+           data-detail-open="{{ base }}?ward_edit={{ wg.ward_id }}">编辑病区</a>
+      </div>
+      {% endif %}
+
+      {% for zg in wg.zone_groups %}
+      {% set zns = namespace(pending=0) %}
+      {% for p in zg.points %}{% set zns.pending = zns.pending + (pbl.get(p.light_key, 0) or 0) %}{% endfor %}
+      <div class="fg-zone-group" data-zone="{{ zg.zone.zone_id }}">
+        <div class="fg-zone-group__head">
+          {% if ward_layer %}<h4 class="fg-zone-group__name">{{ zg.zone.name }}</h4>
+          {%- else %}<h3 class="fg-zone-group__name">{{ zg.zone.name }}</h3>{% endif %}
+          <span class="fg-zone-group__meta">
+            {{ zone_labels.get(zg.zone.zone_type, zg.zone.zone_type) }} · {{ zg.points|length }} 个点位
+            {%- if zns.pending %} · 待处置 {{ zns.pending }} 条{% endif %}
+            {%- if not zg.zone.is_active %} · 已停用{% endif %}
+          </span>
+        </div>
+        <div class="fg-devcard-grid">
+          {% for p in zg.points %}
+            {% include "_point_card.html" %}
+          {% endfor %}
+        </div>
+      </div>
+      {% endfor %}
+
+      {% if wg.loose_points %}
+      {#- ⚠️「未分组」段**不是区域** ⇒ `data-zone=""`：区域筛选一生效它就自然被排除，
+          不需要为它加任何分支。 -#}
+      <div class="fg-zone-group" data-zone="">
+        <div class="fg-zone-group__head">
+          {% if ward_layer %}<h4 class="fg-zone-group__name">未分组</h4>
+          {%- else %}<h3 class="fg-zone-group__name">未分组</h3>{% endif %}
+          <span class="fg-zone-group__meta">{{ wg.loose_points|length }} 个点位 · 建议归到某个区域</span>
+        </div>
+        <div class="fg-devcard-grid">
+          {% for p in wg.loose_points %}
+            {% include "_point_card.html" %}
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
+
+      {% if ward_layer and not wg.point_total %}
+      {#- 空病区引导（用户拍板「显示，并给引导」）：刚建完的病区 0 区域 0 点位，
+          不渲染就看不见，人会以为没建成。两种空分开说 —— 连区域都没有 / 有区域但没点位，
+          因为下一步该点哪儿不一样。 -#}
+      <div class="fg-ward-group__empty">
+        {% if not wg.zone_total %}
+        {{ icon('filter', 20) }}
+        <p>这个病区还没有区域。点位必须先归到区域，统计和画面都按区域走。</p>
+        <a class="fg-btn fg-btn--secondary fg-btn--sm" href="{{ base }}?zone=1"
+           data-detail-open="{{ base }}?zone=1">{{ icon('plus', 16) }}新增区域</a>
+        {% else %}
+        {{ icon('map-pin', 20) }}
+        <p>这个病区还没有点位。</p>
+        <a class="fg-btn fg-btn--secondary fg-btn--sm" href="{{ base }}?point=1"
+           data-detail-open="{{ base }}?point=1">{{ icon('plus', 16) }}新增点位</a>
+        {% endif %}
+      </div>
+      {% endif %}
+    </section>
+    {% endfor %}
+
+    {#- 九改：筛空了才出现的一条提示（默认 hidden，脚本控制） -#}
+    <p class="fg-empty-inline" data-point-empty hidden>没有符合筛选条件的点位。</p>
+  </div>
+  {% else %}
+    {{ empty_state('还没有点位', '点位就是摄像头看的位置。先建点位，再绑设备。',
+                   '新增点位' if admin_mode else none,
+                   (base ~ '?point=1') if admin_mode else none, 'map-pin') }}
+  {% endif %}
+</section>
+
+{#- ── 右侧抽屉（2026-11-05 第93轮改版·二；三改把「新增点位/新增区域」也搬进来）──
+   ⚠️ 这个根**必须常渲染**（没有选中时 hidden）。app.js 的 loadDetail 是把
+      请求回来的 .fg-drawer__body 换进这个壳；根不存在时它退回整页跳转，
+      所以不能写成「按需出现」。
+   三种内容互斥：?point=1 新增点位｜?zone=1 新增区域｜manage_point 点位详情。
+   用户原话：「做成侧页抽屉可以吗，别放下面了，一点也不方便」—— 新增表单原先
+   挂在列表**下方**，点位越多越要往下滚。
+   直接访问 /admin/points/<id> 时服务端就把面板渲染成展开态（无 JS 也能看），
+   下面这段 <noscript> 把固定定位改回文档流，否则无 JS 时关不掉、还盖住列表。
+   护士长入口（/head/points）不渲染这个壳：她没有 data-detail-open 链接，
+   多一个空抽屉根只会让「根不存在就整页跳」的保护失效。 -#}
+{% if admin_mode %}
+{% set _new_point = request.query_params.get('point') == '1' %}
+{% set _new_zone = request.query_params.get('zone') == '1' %}
+{% set _new_ward = request.query_params.get('ward') == '1' %}
+{#- 十改：`?ward_edit=<ward_id>` 走编辑。为什么用独立参数而不是 `?ward=4F-A`：
+    病区编码理论上可以是 `1`，那样 `?ward=1` 就同时是「新建」和「编辑 1 号病区」。 -#}
+{% set _edit_ward_id = request.query_params.get('ward_edit') %}
+{% set _edit_ward = (ward_list | selectattr('ward_id', 'equalto', _edit_ward_id) | list | first)
+                    if _edit_ward_id else none %}
+{% set _drawer_open = manage_point or _new_point or _new_zone or _new_ward or _edit_ward %}
+<div class="fg-drawer-root" id="fg-drawer-root" {% if not _drawer_open %}hidden{% endif %}>
+  <div class="fg-drawer-overlay" data-drawer-close></div>
+  <aside class="fg-drawer fg-drawer--wide" role="dialog" aria-modal="true"
+         aria-label="{{ '新增点位' if _new_point else ('新增区域' if _new_zone
+                       else ('新建病区' if _new_ward else ('编辑病区' if _edit_ward else '点位详情'))) }}"
+         tabindex="-1">
+    <div class="fg-drawer__body">
+      {% if _new_point %}
+        {% include "_point_new_form.html" %}
+      {% elif _new_zone %}
+        {% include "_zone_new_form.html" %}
+      {% elif _new_ward or _edit_ward %}
+        {% set ward = _edit_ward %}
+        {% include "_ward_form.html" %}
+      {% elif manage_point %}
+        {% set point = manage_point %}
+        {% set _matched = device_list | selectattr('device_id', 'equalto', manage_point.device_id or '') | list %}
+        {% set device = _matched[0] if _matched else none %}
+        {% include "_point_panel.html" %}
+      {% endif %}
+    </div>
+  </aside>
+</div>
+<noscript>
+  <style>
+    .fg-drawer-root { position: static; }
+    .fg-drawer-overlay { display: none; }
+    .fg-drawer { position: static; width: auto; max-width: none; box-shadow: none; border-left: 0; }
+    .fg-drawer__body { overflow: visible; }
+  </style>
+</noscript>
+{% endif %}
+{% endblock %}
+
+{#- 九改（2026-11-06）：点位筛选 = **纯前端**。
+   为什么不在服务端筛：这页就几张卡，为筛一下重跑 SQL 不值；更要紧的是筛完必须
+   **连区域分组标题一起收掉**（某个区域一个点都不剩还留个光秃秃的组名最碍眼），
+   服务端筛就得把分组循环重写一遍，还得区分「未分组」那段 —— 前端只看卡片可见性，最省。
+   为什么可以这么做：本页**没有 data-refresh-every**（不自动换 DOM），所以筛完的状态不会被
+   30s 刷新冲掉；「刷新」按钮是整页跳转，筛条件本来也该重置。
+   data-* 由 _point_card.html 提供；卡片消失用 hidden（app.css 有 [hidden]{display:none!important}）。 -#}
+{% block scripts %}
+<script>
+(function () {
+  var bar = document.querySelector('.fg-filters--panel');
+  if (!bar) return;                      // 没有点位（empty_state）时整段不干活
+
+  var q      = bar.querySelector('[data-point-filter="q"]');
+  var bound  = bar.querySelector('[data-point-filter="bound"]');
+  var stream = bar.querySelector('[data-point-filter="stream"]');
+  var state  = bar.querySelector('[data-point-filter="state"]');
+  // 十一改：病区下拉**只有管理员页有**（护士长只有一个病区）⇒ 这两个引用必须 null-safe，
+  // 不能像上面四个那样直接用（她那页 ward 是 null，一碰 .value 就整段脚本死掉）。
+  var ward   = bar.querySelector('[data-point-filter="ward"]');
+  var zone   = bar.querySelector('[data-point-filter="zone"]');
+  var shown  = document.querySelector('[data-point-shown]');
+  var reset  = document.querySelector('[data-point-reset]');
+  var empty  = document.querySelector('[data-point-empty]');
+  var cards  = [].slice.call(document.querySelectorAll('.fg-devcard'));
+  // 十一改：每张卡属于哪个病区/区域，**初始化时算一次**。
+  // 放进 apply() 里每帧 closest() 是白费力气 —— 渲染完层级不会再变。
+  var meta = cards.map(function (c) {
+    var zg = c.closest('.fg-zone-group');
+    var wg = c.closest('.fg-ward-group');
+    return {w: wg ? wg.getAttribute('data-ward') : '',
+            z: zg ? zg.getAttribute('data-zone') : ''};
+  });
+  // 十一改·二（2026-11-06）：区域下拉跟病区**单向联动**。
+  // 把服务端渲染好的 optgroup 先认下来，之后只在 select 里**移进移出** ——
+  // 不在 JS 里重建选项：区域清单始终只有服务端那一份，JS 只搬运节点。
+  // ⚠️ 不用 `optgroup[hidden]`：`hidden` 对 option/optgroup 在部分浏览器不生效，
+  //    而移动节点是处处都认的做法，而且能被工装 `--dump-dom` 直接验。
+  // 护士长页是平铺的（没有 optgroup）⇒ 这里是空数组，整段联动自然空转。
+  // ⚠️⚠️ 注释里**不许出现带尖括号的标签名**（`<optgroup>` 这种）：页内脚本也在 HTML 里，
+  //    「护士长页不该有 optgroup」这类断言一旦裸搜整页就会搜到注释，变成假 FAIL
+  //    —— 这一条 2026-11-06 当场踩了，工装随即 FAIL。
+  var zoneGroups = zone ? [].slice.call(zone.querySelectorAll('optgroup')) : [];
+
+  /**
+   * 选了病区 ⇒ 区域下拉里只留这个病区的组（其余整组移出）。
+   * ⚠️ 选中项落在被移走的组里时必须**回落到「全部」**：否则 `select.value` 指向一个
+   *    已经不在列表里的 option（浏览器把 selectedIndex 置 -1，框里一片空白），
+   *    人看着像「没选」其实还在拿它筛 —— 这正是我们不想再要的那种「看不见的筛选」。
+   * 用户拍板：只做这个方向；单独选区域时**不**回头改病区。
+   */
+  function syncZoneOptions() {
+    if (!zoneGroups.length) return;            // 护士长页无组可动
+    var w = ward ? ward.value : '';
+    var keep = zone.value;
+    zoneGroups.forEach(function (g) {          // 全摘下来（节点仍被 zoneGroups 引用着）
+      if (g.parentNode) g.parentNode.removeChild(g);
+    });
+    zoneGroups.forEach(function (g) {          // 按服务端原顺序把该病区的放回去
+      if (!w || g.getAttribute('data-ward') === w) zone.appendChild(g);
+    });
+    var stillThere = [].slice.call(zone.options).some(function (o) {
+      return o.value === keep;
+    });
+    zone.value = stillThere ? keep : '';
+  }
+  // 十改：病区块和区域块都要能整块收起 —— 病区块里连一张可显示的卡都没有时，
+  // 它的标题、统计和「还没有区域」引导都该一起走，别留个空壳。
+  var groups = [].slice.call(
+    document.querySelectorAll('.fg-ward-group, .fg-zone-group'));
+
+  function apply() {
+    var kw = (q.value || '').trim().toLowerCase();
+    var b = bound.value, s = stream.value, st = state.value;
+    var w = ward ? ward.value : '', z = zone ? zone.value : '';
+    var active = !!(kw || b || s || st || w || z);
+    var n = 0;
+
+    cards.forEach(function (c, i) {
+      var hit = true;
+      // 只搜卡上三个「人会说出口」的字段：点位名 / 告警地点 / 设备码
+      // ⚠️ 两边都要 toLowerCase：data-search 保留原始大小写（K7C-4FC-03 印在 DOM 里要能读），
+      //    只在比对时降一次；模板里直接 |lower 会让审 DOM 的人以为设备码是小写的。
+      if (kw && c.getAttribute('data-search').toLowerCase().indexOf(kw) < 0) hit = false;
+      if (hit && b  && c.getAttribute('data-bound')  !== b)  hit = false;
+      if (hit && s  && c.getAttribute('data-stream') !== s)  hit = false;
+      if (hit && st && c.getAttribute('data-state')  !== st) hit = false;
+      // 十一改：病区/区域。`data-zone=""`（未分组段）永远不等于具体区域 ⇒ 自动被排除。
+      if (hit && w && meta[i].w !== w) hit = false;
+      if (hit && z && meta[i].z !== z) hit = false;
+      c.hidden = !hit;
+      if (hit) n++;
+    });
+
+    // 整组筛空就收起分组标题（含「未分组」那段和整个病区块）
+    // ⚠️⚠️ 必须先判 `active`：**空病区块里一张卡都没有**（刚建完的病区就是这样），
+    //     少了这个判断，首屏那一次 apply() 会把它当成「筛空了」直接 hidden ——
+    //     十改特意渲染出来给人看的「还没有区域 + 新增区域」引导就永远见不着了。
+    groups.forEach(function (g) {
+      g.hidden = active && g.querySelectorAll('.fg-devcard:not([hidden])').length === 0;
+    });
+
+    if (shown) shown.textContent = n;
+    if (empty) empty.hidden = n > 0;
+    if (reset) reset.hidden = !active;
+  }
+
+  var controls = [q, bound, stream, state];
+  if (zone) controls.push(zone);          // 区域自己变不需要联动，重筛就行
+  controls.forEach(function (el) {        // 护士长页 ward 是 null，不进这个表
+    el.addEventListener('input', apply);
+    el.addEventListener('change', apply);
+  });
+  // 病区**单独绑**：它一变必须先同步区域下拉、再重筛 —— 顺序不能反，
+  // `apply()` 读的是同步之后的 `zone.value`。
+  if (ward) {
+    ward.addEventListener('change', function () { syncZoneOptions(); apply(); });
+  }
+
+  if (reset) reset.addEventListener('click', function () {
+    q.value = ''; bound.value = ''; stream.value = ''; state.value = '';
+    if (ward) ward.value = '';
+    syncZoneOptions();                    // 病区回「全部」后，区域那些组要放回来
+    if (zone) zone.value = '';
+    apply();
+    q.focus();
+  });
+
+  syncZoneOptions();                      // 首次进来（含浏览器恢复了下拉值）先对齐一次
+  apply();                                // 首次进来（含浏览器缓存了搜索框内容）也对一次
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,37 @@
+{# ==========================================================================
+   500 服务暂时不可用
+   上下文：request_id（可选）、error_message（可选）、user（可选）
+   ========================================================================== #}
+{% from "_macros.html" import icon %}
+{% set role = user.role if user is defined and user else '' %}
+{#- 落地页与 deps.home_for() 同口径；管理员回 /admin/overview -#}
+{% set home = home_for(role) if role else '/login' %}
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>服务暂时不可用 · 衡护 HENGUARD</title>
+  <link rel="stylesheet" href="/static/tokens.css">
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  <main class="fg-errorpage">
+    <div class="fg-errorpage__card">
+      <div class="fg-errorpage__brand">{{ icon('logo', 24) }}衡护 HENGUARD</div>
+      <div class="fg-errorpage__code">500</div>
+      <h1 class="fg-errorpage__title">服务暂时不可用，请稍后重试</h1>
+      <p class="fg-errorpage__desc">
+        {{ error_message if error_message is defined and error_message else '服务器处理请求时出错。数据不会丢失，请稍后重试；若持续出现，请联系管理员。' }}
+      </p>
+      {% if request_id is defined and request_id %}
+      <p class="fg-errorpage__meta">追踪号：<span class="fg-mono">{{ request_id }}</span></p>
+      {% endif %}
+      <div class="fg-errorpage__actions">
+        <a class="fg-btn fg-btn--primary" href="{{ request.url.path if request is defined and request else home }}">重试</a>
+        <a class="fg-btn fg-btn--secondary" href="{{ home }}">返回工作台</a>
+      </div>
+    </div>
+  </main>
+</body>
+</html>

@@ -1,0 +1,72 @@
+{# ==========================================================================
+   护士长事件详情 /head/events/:eventUid（整页 + 证据链）
+   上下文：event（含 actions[] 与 snapshot）、audit_trail[]、user、back_url
+   ========================================================================== #}
+{% extends "base.html" %}
+{% from "_macros.html" import icon, fmt_time, fmt_datetime, short_uid, empty_state, audit_action, audit_role, audit_result, audit_detail %}
+
+{% block title %}事件详情 · 衡护 HENGUARD{% endblock %}
+{% block page_key %}head-event-detail{% endblock %}
+{% block page_title %}事件详情{% endblock %}
+{% block page_subtitle %}
+{{ event.location or '—' }} · 事件号 {{ short_uid(event.event_uid) }} · 接收于 {{ fmt_datetime(event.received_at) }}
+{% endblock %}
+
+{% block actions %}
+<a class="fg-btn fg-btn--secondary" href="{{ back_url if back_url is defined and back_url else '/head/events' }}">
+  {{ icon('arrow-left', 18) }}返回台账
+</a>
+{% endblock %}
+
+{% block content %}
+<div class="fg-col-8">
+  {% set detail_embedded = true %}
+  {% include "event_detail.html" %}
+</div>
+
+<aside class="fg-col-4 fg-stack">
+  <section class="fg-panel">
+    <div class="fg-panel__head">
+      <h2 class="fg-panel__title">证据链</h2>
+      <span class="fg-panel__sub">审计日志只追加，不可改删</span>
+    </div>
+    <div class="fg-panel__body">
+      {% set audit_list = audit_trail if audit_trail is defined and audit_trail else [] %}
+      {% if audit_list %}
+      <div class="fg-timeline">
+        {% for row in audit_list %}
+        <div class="fg-timeline__item fg-timeline__item--done">
+          <div class="fg-timeline__time">{{ fmt_time(row.at, '%m-%d %H:%M:%S') }}</div>
+          <div class="fg-timeline__text">
+            <strong>{{ row.actor_name if row.actor_name is defined and row.actor_name else '系统' }}</strong>
+            {% if row.actor_role is defined and row.actor_role %}<span class="fg-muted">（{{ audit_role(row.actor_role) }}）</span>{% endif %}
+            · {{ audit_action(row.action) if row.action else '—' }}
+            {% if row.object_type is defined and row.object_type %}
+            <span class="fg-muted">· {{ row.object_type }} {{ short_uid(row.object_id) }}</span>
+            {% endif %}
+          </div>
+          <div class="fg-timeline__note">
+            结果 {{ audit_result(row.result) if row.result else '—' }}
+            {% if row.client_ip is defined and row.client_ip %} · IP {{ row.client_ip }}{% endif %}
+            {#- 2026-11-07：原来是 `{{ row.detail|tojson }}`，把 JSON 原样倒在页面上
+                （`{"from_state":"PENDING",…}`）。改用审计页那套 detail 渲染，
+                columns=1 是因为这条 aside 只有 1/3 宽，两列会挤成两行字。 -#}
+            {% if row.detail is defined and row.detail %}
+            <div class="fg-mt-2">{{ audit_detail(row.detail, columns=1) }}</div>
+            {% endif %}
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+        {{ empty_state('暂无审计记录', '', '', '', 'audit') }}
+      {% endif %}
+    </div>
+  </section>
+
+  <div class="fg-note">
+    {{ icon('lock', 18) }}
+    <span>护士长只读：不能接警、到场或处置。需要重新处理时，使用「重开事件」，并填写原因。</span>
+  </div>
+</aside>
+{% endblock %}

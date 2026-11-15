@@ -1,0 +1,177 @@
+{# ==========================================================================
+   单台设备卡片（被 head_devices.html 的区域分组循环 include）
+   依赖外层：device、pbd（pending_by_device）、mount_labels
+   ========================================================================== #}
+{% from "_macros.html" import icon, fmt_iso_time, iso, model_ver, doorlight %}
+{#- 停用/启用的审计理由要写清是谁做的：这份卡片护士长与管理员共用 -#}
+{% set actor_word = '信息科管理员' if admin_mode is defined and admin_mode else '护士长' %}
+{#- 十七改：卡上带三个筛选锚点（纯前端筛，服务端不参与）。
+    `data-search` 只放**人会念出口**的三个词：设备码 / 设备名 / 点位名。
+    ⚠️ 这里**不做 `|lower`**：DOM 里 K7C-4FC-03 要按原样可读，降大小写在 JS 比对时做。 -#}
+{% set dev_search = device.device_code ~ ' ' ~ (device.device_name or '') ~ ' ' ~ (device.live_point_name or '') %}
+{% set dev_state = 'disabled' if not device.is_active else ('online' if device.online else 'offline') %}
+<article class="fg-devcard"
+         data-search="{{ dev_search }}"
+         data-bound="{{ '1' if device.live_point_id else '0' }}"
+         data-state="{{ dev_state }}">
+  {#- 护士长：门灯是「该设备待处置」的入口。
+      管理员：不看临床数据，只显示在线/离线/停用。 -#}
+  {% if admin_mode is defined and admin_mode %}
+  <div class="fg-devcard__head">
+    <span class="fg-tag {% if not device.is_active %}fg-tag--retracted{% elif device.online %}fg-tag--confirmed{% else %}fg-tag--pending{% endif %}">
+      {%- if not device.is_active -%}停用
+      {%- elif device.online -%}在线
+      {%- else -%}离线{%- endif -%}
+    </span>
+    <span class="fg-devcard__code fg-mono">{{ device.device_code }}</span>
+  </div>
+  {% else %}
+  {{ doorlight(device, pbd.get(device.device_code, 0)) }}
+  {% endif %}
+
+  <div class="fg-devcard__head">
+    <h3 class="fg-devcard__name" title="{{ device.device_name }}">{{ device.device_name }}</h3>
+    <span class="fg-devcard__code fg-mono">
+      {%- if admin_mode is defined and admin_mode and device.ward_name -%}
+      {{ device.ward_name }}
+      {%- else -%}
+      {{ device.device_code }}
+      {%- endif -%}
+    </span>
+  </div>
+
+  <dl class="fg-devcard__spec">
+    {% if device.live_point_id %}
+    {#- 七改：设备行上不再有位置副本，**绑定了这台设备的点位**是位置/画面/骨架/告警
+        的唯一来源。不写出来，就会反复出现「我明明改到 512病房 了，怎么还显示 409病房」。
+        2026-11-05 二改：管理员点它直接进那个点位的抽屉（这是**指路**，不是第二个管理入口）。 -#}
+    <div>
+      <dt>显示在</dt>
+      <dd title="这个点位绑定了这台设备：画面、骨架、告警按它走">
+        {%- if admin_mode is defined and admin_mode -%}
+        <a href="/admin/points/{{ device.live_point_id }}">{{ device.live_point_name }}</a>
+        {%- else -%}{{ device.live_point_name }}{%- endif -%}
+        {%- if device.live_ward_name %} · {{ device.live_ward_name }}{% endif -%}
+      </dd>
+    </div>
+    {% else %}
+    <div>
+      <dt>显示在</dt>
+      <dd><span class="fg-muted">没有点位绑定它（不出画面）</span></dd>
+    </div>
+    {% endif %}
+    <div>
+      <dt>安装</dt>
+      <dd>
+        {%- if device.mount_type -%}{{ mount_labels.get(device.mount_type, device.mount_type) }}{%- else -%}—{%- endif -%}
+        {%- if device.mount_height_cm %} · {{ device.mount_height_cm }}cm{% endif -%}
+        {%- if device.location_detail %} · {{ device.location_detail }}{% endif -%}
+      </dd>
+    </div>
+    <div>
+      <dt>摄像头</dt>
+      <dd>{{ device.camera_model or '—' }}</dd>
+    </div>
+    {% if admin_mode is defined and admin_mode %}
+    {#- 板端**推**的流（≠ 点位**显示**的流）。只给信息科看：护士不需要关心
+        mediamtx 的路径名，而它决定了网页骨架跟着哪块板子走。 -#}
+    <div>
+      <dt>推流</dt>
+      <dd class="fg-mono" title="这台设备推到 mediamtx 的路径名；网页骨架按它跟画面走">
+        {%- if device.stream_path -%}{{ device.stream_path }}
+        {%- else -%}<span class="fg-muted">未登记</span>{%- endif -%}
+      </dd>
+    </div>
+    {% endif %}
+    <div>
+      <dt>模型</dt>
+      <dd class="fg-mono">
+        {%- if device.model_ver is not none %}v{{ model_ver(device.model_ver) }}{% else %}—{% endif -%}
+      </dd>
+    </div>
+    <div>
+      <dt>最后心跳</dt>
+      <dd>
+        {%- if device.last_seen_at -%}
+        <span data-relative-time="{{ iso(device.last_seen_at) }}">{{ fmt_iso_time(device.last_seen_at) }}</span>
+        {%- else -%}—{%- endif -%}
+      </dd>
+    </div>
+    {#- 「最后事件」是临床信息：管理员卡只看设备健康，不显示病人事件时间 -#}
+    {% if not (admin_mode is defined and admin_mode) %}
+    <div>
+      <dt>最后事件</dt>
+      <dd>
+        {%- if device.last_event_at -%}
+        <span data-relative-time="{{ iso(device.last_event_at) }}">{{ fmt_iso_time(device.last_event_at) }}</span>
+        {%- else -%}—{%- endif -%}
+      </dd>
+    </div>
+    {% endif %}
+  </dl>
+
+  {#- 板端遥测（2026-11-05 二改从点位抽屉搬来；2026-11-06 十八改升级成「小格 + 判据」；
+      2026-11-07 重排成「四列仪表格」：标签在上、数值在下，运行时长独立页脚）。
+      遥测是**设备**的事实，归设备页，护士长入口不显示（用户拍板「完全不给她看」）。
+      判级（正常 / 偏高 / 满载·过热）全在 `app/telemetry.py`，模板只画 ——
+      阈值只许有一份，否则首页运维台和设备页会各说各话。
+      ⚠️ 没上报的键**不占位**（老固件没有 npu_load）：留「—」会被读成「用量 0%」。 -#}
+  {% if admin_mode is defined and admin_mode %}
+  {% set st = device.last_status if device.last_status is mapping else {} %}
+  {% set tele = device.telemetry if device.telemetry is defined and device.telemetry else [] %}
+  {% if tele %}
+  {#- 离线时整条降灰：页面不自动刷新，数可能已经放凉了。宁可看起来旧，不能看起来新。 -#}
+  <div class="fg-tele{% if not device.online %} fg-tele--stale{% endif %}">
+    {% for c in tele %}
+    <span class="fg-tele__chip{% if c.level != 'ok' %} fg-tele__chip--{{ c.level }}{% endif %}"
+          {% if c.title %}title="{{ c.title }}"{% endif %}>
+      <span class="fg-tele__k">{{ c.label }}</span>
+      <b class="fg-tele__v">{{ c.text }}</b>
+      {%- if c.note %}<span class="fg-tele__note">{{ c.note }}</span>{% endif -%}
+    </span>
+    {% endfor %}
+    {% set _up = fmt_uptime(st.get('uptime_s')) %}
+    {% if _up %}
+    <span class="fg-tele__uptime">运行 {{ _up }}</span>
+    {% endif %}
+  </div>
+  {% if not device.online and device.last_seen_at %}
+  <p class="fg-tele__fresh">
+    数据停在
+    <span data-relative-time="{{ iso(device.last_seen_at) }}">{{ fmt_iso_time(device.last_seen_at) }}</span>
+  </p>
+  {% endif %}
+  {% endif %}
+  {% endif %}
+
+  {%- set _actions = card_actions if card_actions is defined else true -%}
+  {#- 2026-11-05 二改（用户拍板「方案 A」）：设备页只管**登记 + 启停**，对所有设备一视同仁，
+      不再按「有没有绑定点位」分成两条路径。判定策略在点位详情里。 -#}
+  {% if admin_mode is defined and admin_mode and _actions %}
+  <div class="fg-devcard__actions">
+    <a class="fg-btn fg-btn--ghost fg-btn--sm"
+       href="{{ base }}?edit={{ device.device_id }}"
+       data-detail-open="{{ base }}?edit={{ device.device_id }}">{{ icon('settings', 16) }}编辑</a>
+    {% if device.is_active %}
+    <button type="button" class="fg-btn fg-btn--ghost fg-btn--sm"
+            data-api-action
+            data-api-url="/api/v1/admin/devices/{{ device.device_id }}/disable"
+            data-api-body='{"reason":"{{ actor_word }}在设备页停用"}'
+            {#- 二十改：原来写「停用后云端不再接收这台设备的事件（板端仍会检测）」——
+                用户「不要反复提云端和板端，正常一点」。说法不变、话变人话：
+                画面走的是设备自己的流（`live._stream_allowed` 只看**点位**是否启用），
+                检测在设备上跑，两者都不受这里影响。 -#}
+            data-confirm="停用后这台设备的新告警不再记录；画面和检测不受影响。确定停用？">
+      {{ icon('power', 16) }}停用
+    </button>
+    {% else %}
+    <button type="button" class="fg-btn fg-btn--ghost fg-btn--sm"
+            data-api-action
+            data-api-url="/api/v1/admin/devices/{{ device.device_id }}/enable"
+            data-api-body='{"reason":"{{ actor_word }}在设备页启用"}'>
+      {{ icon('power', 16) }}启用
+    </button>
+    {% endif %}
+  </div>
+  {% endif %}
+</article>

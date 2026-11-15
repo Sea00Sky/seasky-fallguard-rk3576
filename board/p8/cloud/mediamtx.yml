@@ -1,0 +1,99 @@
+###############################################
+# FallGuard 云端 mediamtx 配置（v1.21.3）
+#
+# 只写需要覆盖的键 —— mediamtx 先用默认值初始化，再用本文件覆盖。
+# 每个键的完整说明见发行包自带的 mediamtx.yml（889 行逐行注释）。
+#
+# 拓扑：
+# 板 --SRT/UDP 8890--> 本机 --RTSP/TCP 8554--> 观看端
+#
+# 默认配置是「任何人可 publish / read」（authInternalUsers 第一条 user: any），
+# 这里必须整段替换，否则公网上谁都能推流、谁都能看病房画面。
+###############################################
+
+logLevel: info
+logDestinations: [stdout]
+
+###############################################
+# 只开两个协议
+
+rtsp: true
+rtspAddress: :8554
+# 只开 tcp：udp 传输会额外绑 :8000/:8001（RTP/RTCP），
+# 云防火墙就得多放两条规则；而播放器在 SETUP 阶段发现服务端不支持 udp
+# 会自动回落到 tcp，体验差别可以忽略。
+rtspTransports: [tcp]
+rtspAuthMethods: [basic]
+
+srt: true
+srtAddress: :8890
+
+# 用不到的协议一律关：少一个端口就少一份暴露面
+#
+# HLS 例外（ 开）：浏览器只能播 HLS/WebRTC，播不了裸 RTSP。
+# 要「网页看云端那一路」就必须开它。HLS 是纯 HTTP + fMP4 重封装，
+# 不转码（2 核 4G 完全够），延迟约 2–4 s（lowLatency 变体）。
+hls: true
+hlsAddress: :8888
+hlsVariant: lowLatency
+hlsSegmentCount: 7
+hlsSegmentDuration: 1s
+hlsPartDuration: 200ms
+# 关闭「总是重封装」：没人看就不做 HLS 工作，与板端按需渲染同一思路
+hlsAlwaysRemux: false
+
+webrtc: false
+rtmp: false
+moq: false
+
+# API 只听本地回环 —— SSH 上去 curl 127.0.0.1:9997 查观看端数量，
+# 不要暴露到公网（它会泄露路径/连接信息）
+api: true
+apiAddress: 127.0.0.1:9997
+metrics: false
+
+###############################################
+# 鉴权
+
+authMethod: internal
+authInternalUsers:
+  # 板子：只许发布到 live
+  # 客户端在 streamid 里带凭据：publish:live:board:<口令>
+  - user: board
+    pass: <SRT_PUBLISH_PASSWORD>
+    ips: []
+    permissions:
+      - action: publish
+        path: live
+
+  # 观看端：只许读 live
+  - user: viewer
+    pass: <SRT_VIEWER_PASSWORD>
+    ips: []
+    permissions:
+      - action: read
+        path: live
+
+  # 本机（SSH 上去查 API / metrics）
+  - user: any
+    pass:
+    ips: ["127.0.0.1", "::1"]
+    permissions:
+      - action: api
+      - action: metrics
+      - action: pprof
+
+###############################################
+# 路径
+
+paths:
+  all_others:
+    # SRT 发布必须带 AES 口令。
+    # 服务端在连接请求阶段校验（internal/servers/srt/conn.go: srtCheckPassphrase）：
+    # 客户端没加密 ⇒ "passphrase not provided by client"；口令不符 ⇒ "invalid passphrase"。
+    # 客户端侧对应 GStreamer srtsink 的 passphrase 属性。
+    srtPublishPassphrase: ${FG_CLOUD_PASSPHRASE}
+
+    # 允许新发布者顶掉旧的（板子断线重连时会重建会话）。
+    # 保持默认 true；如果将来要防「别人顶掉你的流」，改 false。
+    overridePublisher: true

@@ -1,0 +1,21 @@
+[Unit]
+# 每天凌晨低峰触发一次感知进程重启。
+# 配套 unit：fallguard-daily-restart.service；安装：sudo sh p8/install_daily_restart.sh
+Description=FallGuard 每日低峰重启感知进程（定时器）
+
+[Timer]
+# 03:30 而不是整点：① 整点是系统里其它定时任务最挤的时候；② 这一段检测盲区
+# （旧的优雅退出 + 新进程 RKNN 初始化 ~0.9 s + 摄像头/GStreamer/shm 接管 = 数秒级）
+# 离交接班和巡视最远。
+OnCalendar=*-*-* 03:30:00
+
+# 必须 false：开机本身就是一次完整重置（进程全新、内存全新、
+# person_id/window_start 归零）。补跑只会白白多一段盲区。
+Persistent=false
+
+# 单板单实例，不需要随机抖动；给 30 s 容差免得和其它 unit 抢同一秒。
+AccuracySec=30s
+Unit=fallguard-daily-restart.service
+
+[Install]
+WantedBy=timers.target

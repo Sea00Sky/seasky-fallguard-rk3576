@@ -1,0 +1,393 @@
+{# ==========================================================================
+   衡护 HENGUARD · 基础骨架
+   block：title / page_key / page_title / page_subtitle / actions / banner / content / scripts
+   依赖上下文：user（CurrentUser 或 dict）、ward（可选）、pending_count、system_status、
+              last_event_at、active_nav（可选，传路由前缀，如 '/alerts'）
+   2026-11-04：顶栏的班次牌（shift_label，如「白班 08:00–16:00」）整块删除 ——
+              那个时间是我们编的。班次窗口内部仍在用（metrics.close_since），
+              只是不再对外声称它是几点到几点。所以这里不再读 shift_label。
+   ========================================================================== #}
+{% from "_macros.html" import icon, fmt_time %}
+<!doctype html>
+{#- data-theme：V2 深色按页迁移。子模板覆盖 html_theme 为 dark 才启用深色，
+    未迁移的页面保持浅色 —— 一眼能看出哪些页还没搬，也不会出现「深色但没重排」的半成品。 -#}
+<html lang="zh-CN" data-theme="{% block html_theme %}light{% endblock %}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  {#- 深色页要在移动端把浏览器外壳一起压暗，否则页面是深的、地址栏是白的 -#}
+  <meta name="theme-color" content="{% block theme_color %}#EDF1EE{% endblock %}">
+  <title>{% block title %}衡护 HENGUARD{% endblock %}</title>
+  {#- 数字等宽字体只有 4.8 KB，预载它比等 CSS 解析完再拉更稳；crossorigin 是字体预载必需的 -#}
+  <link rel="preload" as="font" type="font/woff2"
+        href="{{ asset('fonts/plexmono-Regular.woff2') }}" crossorigin>
+  <link rel="stylesheet" href="{{ asset('fonts/fonts.css') }}">
+  <link rel="stylesheet" href="{{ asset('tokens.css') }}">
+  <link rel="stylesheet" href="{{ asset('app.css') }}">
+  {#- 主题文件必须排在 app.css 之后：它们既要覆盖 token，也要覆盖少量组件规则。
+      light-v2 是现役浅色（医院场景默认），dark 保留为夜间模式候选，都不影响未迁移页面。 -#}
+  <link rel="stylesheet" href="{{ asset('theme-light-v2.css') }}">
+  <link rel="stylesheet" href="{{ asset('theme-dark.css') }}">
+  {#- 侧栏收起状态必须在首帧前落上：放进 app.js（defer）会先展开再收起，闪一下。
+      只往 <html> 上加类，样式规则见 app.css 的「导航收起」。 -#}
+  <script>
+    try {
+      if (localStorage.getItem('fg-nav-collapsed') === '1') {
+        document.documentElement.classList.add('fg-nav-collapsed');
+      }
+    } catch (e) {}
+  </script>
+  {% block head %}{% endblock %}
+</head>
+{% set role = user.role if user is defined and user else 'nurse' %}
+{#- 临床角色才接实时告警流：管理员的 /api/v1/stream 会被 scoped_ward() 判 403，
+    前端 EventSource 报错就会弹「实时连接已断」横幅——而管理员本来就不看临床告警。 -#}
+{% set clinical = role in ('nurse', 'head_nurse') %}
+{% set path = request.url.path if request is defined and request else '' %}
+{% set current = active_nav if active_nav is defined and active_nav else path %}
+{#- 管理员不绑病区，顶栏写「全院」；写 user.ward_id 会渲染成「未绑定病区」，像是账号配错了 -#}
+{% set ward_display = '全院' if role == 'admin' else (ward.ward_name if ward is defined and ward and ward.ward_name else (ward.ward_id if ward is defined and ward else (user.ward_id if user is defined and user else ''))) %}
+{% set status = system_status if system_status is defined and system_status else 'online' %}
+<body class="fg-app"
+      data-page="{% block page_key %}generic{% endblock %}"
+      data-authed="1"
+      data-role="{{ role }}"
+      data-user-name="{{ user.display_name if user is defined and user else '' }}"
+      data-stream-url="{{ '/api/v1/stream' if clinical else '' }}">
+  <a class="fg-sr-only" href="#fg-content">跳到主要内容</a>
+
+  <div class="fg-shell">
+    {# ================= 左侧导航轨 248px ================= #}
+    <aside class="fg-nav" id="fg-nav" aria-label="主导航">
+      <div class="fg-nav__brand">
+        <span class="fg-nav__logo">{{ icon('logo', 32) }}</span>
+        <span class="fg-nav__wordmark">
+          <strong>衡护</strong>
+          <span>HENGUARD</span>
+        </span>
+      </div>
+
+      <nav class="fg-nav__nav">
+        {% if role == 'head_nurse' %}
+        {#- 「病区管理」分组小字 2026-11-05 去掉（用户：侧栏不用这 4 个小字）。
+            上面的间距不用补：护士侧栏本来就没有分组标题，同样是品牌条下 8px 起排，以它为准。 -#}
+        <a class="fg-nav__link {% if current.startswith('/head/overview') %}is-active{% endif %}"
+           href="/head/overview" {% if current.startswith('/head/overview') %}aria-current="page"{% endif %}>
+          {{ icon('overview') }}<span class="fg-nav__text">病区总览</span>
+        </a>
+        {#- 2026-11-04：实时画面从总览搬出来，单独给一个入口。
+            点进去是现成的点位画面页（/head/camera 解析出本病区配了摄像头的点位）。 -#}
+        <a class="fg-nav__link {% if current.startswith('/head/camera') %}is-active{% endif %}"
+           href="/head/camera" {% if current.startswith('/head/camera') %}aria-current="page"{% endif %}>
+          {{ icon('camera') }}<span class="fg-nav__text">病区画面</span>
+        </a>
+        <a class="fg-nav__link {% if current.startswith('/head/events') %}is-active{% endif %}"
+           href="/head/events" {% if current.startswith('/head/events') %}aria-current="page"{% endif %}>
+          {{ icon('list') }}<span class="fg-nav__text">事件台账</span>
+        </a>
+        <a class="fg-nav__link {% if current.startswith('/head/staff') %}is-active{% endif %}"
+           href="/head/staff" {% if current.startswith('/head/staff') %}aria-current="page"{% endif %}>
+          {{ icon('users') }}<span class="fg-nav__text">人员与账号</span>
+        </a>
+        <a class="fg-nav__link {% if current.startswith('/head/zones') %}is-active{% endif %}"
+           href="/head/zones" {% if current.startswith('/head/zones') %}aria-current="page"{% endif %}>
+          {{ icon('map-pin') }}<span class="fg-nav__text">区域值守</span>
+        </a>
+        {#- 「设备与模型」入口 2026-11-04 从护士长侧栏移除（用户：护士长可以不管设备）。
+            路由与页面都还在（/head/devices 可直达），信息科走 /admin/devices。 -#}
+        {#- 「审计日志」入口 2026-11-04 从护士长侧栏移除（用户：「护士长不能有审计日志」）。
+            ⚠️ 这次不是只藏入口：`/head/audit` 路由已删（真 404），
+            `GET /api/v1/admin/audit` 也收窄成 admin-only —— 只藏导航等于没收回权限。
+            信息科管理员走 /admin/audit。 -#}
+
+        {% elif role == 'admin' %}
+        {#- 2026-11-01 P11：信息科管理员只进系统管理，不进临床页面。 -#}
+        {#- 「系统管理」分组小字同日一并去掉：两个角色侧栏只有这一处不一致，留着更显眼。 -#}
+        <a class="fg-nav__link {% if current.startswith('/admin/overview') %}is-active{% endif %}"
+           href="/admin/overview" {% if current.startswith('/admin/overview') %}aria-current="page"{% endif %}>
+          {{ icon('activity') }}<span class="fg-nav__text">系统总览</span>
+        </a>
+        {#- 2026-11-05 六改：点位页与设备页分开两个入口。
+            一页里同时有「设备登记」和「点位显示」，改哪边都以为另一边该跟着动。 -#}
+        <a class="fg-nav__link {% if current.startswith('/admin/points') %}is-active{% endif %}"
+           href="/admin/points" {% if current.startswith('/admin/points') %}aria-current="page"{% endif %}>
+          {{ icon('map-pin') }}<span class="fg-nav__text">点位与画面</span>
+        </a>
+        <a class="fg-nav__link {% if current.startswith('/admin/devices') %}is-active{% endif %}"
+           href="/admin/devices" {% if current.startswith('/admin/devices') %}aria-current="page"{% endif %}>
+          {{ icon('device') }}<span class="fg-nav__text">设备台账</span>
+        </a>
+        <a class="fg-nav__link {% if current.startswith('/admin/accounts') %}is-active{% endif %}"
+           href="/admin/accounts" {% if current.startswith('/admin/accounts') %}aria-current="page"{% endif %}>
+          {{ icon('users') }}<span class="fg-nav__text">账号管理</span>
+        </a>
+        <a class="fg-nav__link {% if current.startswith('/admin/audit') %}is-active{% endif %}"
+           href="/admin/audit" {% if current.startswith('/admin/audit') %}aria-current="page"{% endif %}>
+          {{ icon('audit') }}<span class="fg-nav__text">审计日志</span>
+        </a>
+        {% else %}
+        <a class="fg-nav__link {% if current.startswith('/nurse/today') %}is-active{% endif %}"
+           href="/nurse/today" {% if current.startswith('/nurse/today') %}aria-current="page"{% endif %}>
+          {{ icon('dashboard') }}<span class="fg-nav__text">值班工作台</span>
+          <span class="fg-nav__badge" data-pending-count {% if not pending_count %}hidden{% endif %}>{{ pending_count if pending_count is not none else 0 }}</span>
+        </a>
+        <a class="fg-nav__link {% if current.startswith('/alerts') %}is-active{% endif %}"
+           href="/alerts" {% if current.startswith('/alerts') %}aria-current="page"{% endif %}>
+          {{ icon('bell') }}<span class="fg-nav__text">告警中心</span>
+        </a>
+        <a class="fg-nav__link {% if current.startswith('/nurse/history') %}is-active{% endif %}"
+           href="/nurse/history" {% if current.startswith('/nurse/history') %}aria-current="page"{% endif %}>
+          {#- 2026-11-03 方案 A：改名说清口径（这页只列「我处置过的」）。
+              用户随后要求侧栏去掉「我的」——「处置记录」四个字已经够，
+              是不是「我的」由页面里那句「只显示我处置过的事件」交代。
+              ⚠️ 2026-11-11：用户又要求把那句话删了 ⇒ **全站两处都没有「我的」字样了**，
+              「只管我」现在只能从数据本身看出来（列里不会出现别人的记录）。
+              有人问起「这页是全病区还是我的」，答案在 nurse_history 路由的过滤条件里，
+              不在任何一句文案上 —— 别去页面上找。 -#}
+          {{ icon('history') }}<span class="fg-nav__text">处置记录</span>
+        </a>
+        {% endif %}
+      </nav>
+
+      {#- 桌面端收起 / 展开导航（2026-11-03）。≤1279 导航本来就是 80px（CSS 强制），
+          按钮在那一档隐藏；状态记在 localStorage，刷新后保持。
+          aria-controls 指向 aside#fg-nav，展开态由 app.js 同步。 -#}
+      <button type="button" class="fg-nav__collapse" data-nav-collapse
+              aria-controls="fg-nav" aria-expanded="true"
+              aria-label="收起导航" title="收起导航">
+        {{ icon('chevron-left', 18) }}
+        <span class="fg-nav__text">收起导航</span>
+      </button>
+
+      {# 身份与登出只在顶栏用户菜单里出现一次。左栏原本还有一份头像+登出，
+         两处重复不算错，但会把注意力从导航上分走——删掉。 #}
+    </aside>
+    <div class="fg-nav__scrim" aria-hidden="true"></div>
+
+    {# ================= 右侧主区 ================= #}
+    <div class="fg-main">
+      <header class="fg-topbar">
+        <div class="fg-topbar__inner">
+          <button type="button" class="fg-navtoggle" data-nav-toggle aria-label="打开导航">
+            {{ icon('menu', 20) }}
+          </button>
+
+          {# 手机顶栏要有个"这是什么系统"的落点：抽屉里的品牌标识在窄屏看不见 #}
+          <span class="fg-topbar__brand">
+            {{ icon('logo', 22) }}<span>衡护</span>
+          </span>
+
+          <div class="fg-topbar__ward">
+            <strong>{{ ward_display or '未绑定病区' }}</strong>
+            {% if ward is defined and ward and ward.floor %}
+            <span class="fg-topbar__sep" aria-hidden="true"></span>
+            <span>{{ ward.floor }}</span>
+            {% endif %}
+          </div>
+
+          {#- 管理员不查临床事件、不接告警流：搜索框 / 状态药丸 / 铃铛对他全是死链接 -#}
+          {% if clinical %}
+          <form class="fg-search" method="get" action="{{ '/head/events' if role == 'head_nurse' else '/alerts' }}" role="search">
+            <span class="fg-search__icon">{{ icon('search', 18) }}</span>
+            <input class="fg-search__input" type="search" name="q"
+                   value="{{ request.query_params.get('q', '') if request is defined else '' }}"
+                   {#- 后端只做前缀匹配（event_uid::text LIKE 'xxx%'），写「事件号」会让人以为能搜中段/末 8 位 -#}
+                   placeholder="事件号前 8 位 / 点位…" aria-label="搜索事件号前 8 位或点位"
+                   {#- 搜的是十六进制事件号：不关拼写检查，浏览器会在 7c1f4a92 下画红线 -#}
+                   autocomplete="off" spellcheck="false">
+          </form>
+          {% endif %}
+
+          <div class="fg-topbar__right">
+            {% if clinical %}
+            {# 2026-11-04 去掉顶栏的班次牌（原「白班 08:00–16:00」）。
+               那个时间是我们自己编的 —— 医院的真实排班我们并不知道，
+               写在页眉上等于拿一个假前提去撑界面。班次窗口内部还在用
+               （metrics 的 closed_since），但不再对外声称它是几点到几点。 #}
+            <span class="fg-status fg-status--{{ status }}" data-connection-status data-state="{{ status }}">
+              <span class="fg-status__dot" aria-hidden="true"></span>
+              <span>{{ '正常' if status == 'online' else ('延迟' if status == 'degraded' else '离线') }}</span>
+            </span>
+
+            {# 角标数 = 还没人接的条数（只 PENDING，2026-11-04 用户拍板），链接必须同口径，
+               否则点进去的条数和角标对不上 —— 那正是「数字看着在跳」的来源之一。
+               还要显式传空的 from/to：/alerts 把「参数缺失」当成「今天」，
+               而积压事件可能是昨天的 —— 那样点进去是 0 条，和角标直接打架。 #}
+            <a class="fg-iconbtn fg-notify" href="/alerts?disposition=PENDING&test=0&from=&to=" aria-label="待接警告警">
+              {{ icon('bell', 20) }}
+              <span class="fg-notify__count" data-pending-count {% if not pending_count %}hidden{% endif %}>{{ pending_count if pending_count is not none else 0 }}</span>
+            </a>
+            {% endif %}
+
+            <details class="fg-usermenu">
+              <summary class="fg-usermenu__summary">
+                <span class="fg-avatar" aria-hidden="true">{{ (user.display_name if user is defined and user and user.display_name else '护')[:1] }}</span>
+                <span class="fg-usermenu__meta">
+                  <span class="fg-usermenu__name">{{ user.display_name if user is defined and user else '—' }}</span>
+                  <span class="fg-usermenu__role">{{ role_label(role) }}</span>
+                </span>
+              </summary>
+              {#- 2026-11-04 用户：「我的界面其实没必要，把点头像的下拉小窗口扩大一下」。
+                  这块以前只是通往 /me 的一个链接；现在**它就是「我的」**——
+                  身份、今日三个数、改密/提示音/通知/退出、设备与模型版本全在这里。
+                  真实 HIS 的医护端本来就没有个人主页：账号相关的东西都在右上角账号菜单，
+                  个人绩效属于质控模块，不该长在个人页上。 -#}
+              <div class="fg-usermenu__panel">
+                <div class="fg-usermenu__who">
+                  <span class="fg-usermenu__whoname">{{ user.display_name if user is defined and user else '—' }}</span>
+                  <span class="fg-usermenu__whometa">
+                    {{ role_label(role) }}
+                    {%- if ward_display %} · {{ ward_display }}{% endif %}
+                  </span>
+                  {% if user is defined and user and user.last_login_at %}
+                  <span class="fg-usermenu__whometa">
+                    上次登录 {{ fmt_time(user.last_login_at, '%m-%d %H:%M') }}
+                  </span>
+                  {% endif %}
+                </div>
+
+                {#- 三个数**按角色取口径**（main.py `_card_stats()`）：
+                    护士 = 个人的处置/响应/接警；护士长 = 病区的告警/待处置/误报；
+                    管理员没有，ctx 里是 None 就不画。
+                    ⚠️ 别再照原来的「我的」页写死成护士那三个 —— 护士长只能 REOPEN，
+                    「今日接警」恒 0、「中位响应」恒「—」（2026-11-05 用户发现）。 -#}
+                {% if card_stats %}
+                <div class="fg-usermenu__stats">
+                  {% for s in card_stats %}
+                  <div class="fg-usermenu__stat">
+                    <em>{{ s.label }}</em>
+                    <b>{{ s.value }}</b>
+                  </div>
+                  {% endfor %}
+                </div>
+                {% endif %}
+
+                {#- 管理员不接告警流，提示音对他没有意义 -#}
+                {% if clinical %}
+                <label class="fg-usermenu__item fg-usermenu__switch" for="fg-sound-toggle">
+                  <input type="checkbox" id="fg-sound-toggle" data-sound-toggle>
+                  <span>新告警提示音</span>
+                </label>
+                {#- ⚠️ 2026-11-05 **「浏览器通知」这一行整条删除**，别再照着旧记忆加回来。
+                    它走的是浏览器 Notification API，而该 API 只在**安全上下文**下可用；
+                    本站是 `http://` + IP（`isSecureContext === false`），实测在全新浏览器配置里
+                    `Notification.permission` 直接就是 `denied` —— 浏览器对明文来源**强制拒绝**，
+                    与用户操作无关，站点设置里也没有可改的开关。
+                    既然现网永远点不亮、又给不出真实承诺，就不留这个控件。
+                    ⚠️ 告警能力不因此减少：页内弹窗（护士）／提示音／标题闪烁／红点 都不依赖它。
+                    哪天真的上了 HTTPS，再从 git 历史里把这一段捞回来。 -#}
+                {% endif %}
+
+                {#- 2026-11-05：改成「就地开弹窗」。仍留 href=/settings —— 无 JS 时照样能改密，
+                    不是死按钮；有 JS 时被 app.js 的 [data-modal-open] 截住不跳页。 -#}
+                <a class="fg-usermenu__item" href="/settings"
+                   data-modal-open="#fg-pwd-modal">{{ icon('key', 16) }}修改密码</a>
+
+                <form method="post" action="/logout">
+                  <button type="submit" class="fg-usermenu__item fg-usermenu__item--danger">
+                    {{ icon('logout', 16) }}退出登录
+                  </button>
+                </form>
+
+                {#- ⚠️ 2026-11-05 **页脚「N/M 台设备启用 · 模型 vXXXX」整条删除**，别再照着旧记忆加回来。
+                    这一行原来还兼着跳 /admin/devices、/head/devices 的快捷入口；
+                    删掉不丢能力 —— 左侧导航本来就有「设备管理」，设备页内的模型版本
+                    （`_device_card.html` 的 model_ver）也照旧显示。
+                    连带删掉：main.py `_device_summary()` 与 `ctx["device_sum"]`、
+                    app.css `.fg-usermenu__foot`。 -#}
+              </div>
+            </details>
+          </div>
+        </div>
+      </header>
+
+      {% block banner %}{% endblock %}
+
+      <main class="fg-page" id="fg-content">
+        {#- page_head_class：个别页面（值班工作台）要把页头压成一条工具行——
+            标题搬进 sr-only，只留右侧动作，给下面的队列/工作区腾高度。 -#}
+        <div class="fg-page-head{% block page_head_class %}{% endblock %}">
+          <div class="fg-page-head__main">
+            <h1 class="fg-page-title">{% block page_title %}衡护{% endblock %}</h1>
+            <p class="fg-page-sub">{% block page_subtitle %}{% endblock %}</p>
+          </div>
+          {#- 动作条必须贴着 block 写在同一行：页面不填 actions 时不能留下空白文本节点，
+              否则 app.css 的 `.fg-page-actions:empty` 不命中，页头右侧会多出一条空槽。 -#}
+          <div class="fg-page-actions">{% block actions %}{% endblock %}</div>
+        </div>
+
+        <div class="fg-content">
+          {% block content %}{% endblock %}
+        </div>
+      </main>
+    </div>
+  </div>
+
+  {# ================= 移动端底部 Tab（<768 才显示） =================
+     窄屏把左侧导航收进抽屉后，一级入口就没了着落。底部 Tab 是手机上
+     唯一能「一只手够到」的位置，四个入口覆盖值班时 95% 的跳转。 #}
+  <nav class="fg-tabbar" aria-label="快捷导航">
+    {% if role == 'head_nurse' %}
+    <a class="fg-tabbar__item {% if current.startswith('/head/overview') %}is-active{% endif %}"
+       href="/head/overview" {% if current.startswith('/head/overview') %}aria-current="page"{% endif %}>
+      {{ icon('overview', 22) }}<span>总览</span>
+    </a>
+    <a class="fg-tabbar__item {% if current.startswith('/head/events') %}is-active{% endif %}"
+       href="/head/events" {% if current.startswith('/head/events') %}aria-current="page"{% endif %}>
+      {{ icon('list', 22) }}<span>台账</span>
+    </a>
+    <a class="fg-tabbar__item {% if current.startswith('/head/zones') %}is-active{% endif %}"
+       href="/head/zones" {% if current.startswith('/head/zones') %}aria-current="page"{% endif %}>
+      {{ icon('map-pin', 22) }}<span>区域</span>
+    </a>
+    {#- 2026-11-04：「设备」换成「画面」——护士长不再管设备，画面是新的高频入口 -#}
+    <a class="fg-tabbar__item {% if current.startswith('/head/camera') %}is-active{% endif %}"
+       href="/head/camera" {% if current.startswith('/head/camera') %}aria-current="page"{% endif %}>
+      {{ icon('camera', 22) }}<span>画面</span>
+    </a>
+    {% elif role == 'admin' %}
+    {#- 管理员原来掉进下面的护士分支：底部三个 Tab 全是 /nurse/*，一点就 403 -#}
+    <a class="fg-tabbar__item {% if current.startswith('/admin/overview') %}is-active{% endif %}"
+       href="/admin/overview" {% if current.startswith('/admin/overview') %}aria-current="page"{% endif %}>
+      {{ icon('activity', 22) }}<span>总览</span>
+    </a>
+    <a class="fg-tabbar__item {% if current.startswith('/admin/devices') %}is-active{% endif %}"
+       href="/admin/devices" {% if current.startswith('/admin/devices') %}aria-current="page"{% endif %}>
+      {{ icon('device', 22) }}<span>设备</span>
+    </a>
+    <a class="fg-tabbar__item {% if current.startswith('/admin/accounts') %}is-active{% endif %}"
+       href="/admin/accounts" {% if current.startswith('/admin/accounts') %}aria-current="page"{% endif %}>
+      {{ icon('users', 22) }}<span>账号</span>
+    </a>
+    {% else %}
+    <a class="fg-tabbar__item {% if current.startswith('/nurse/today') %}is-active{% endif %}"
+       href="/nurse/today" {% if current.startswith('/nurse/today') %}aria-current="page"{% endif %}>
+      {{ icon('dashboard', 22) }}<span>工作台</span>
+      <span class="fg-tabbar__badge" data-pending-count {% if not pending_count %}hidden{% endif %}>{{ pending_count if pending_count is not none else 0 }}</span>
+    </a>
+    <a class="fg-tabbar__item {% if current.startswith('/alerts') %}is-active{% endif %}"
+       href="/alerts" {% if current.startswith('/alerts') %}aria-current="page"{% endif %}>
+      {{ icon('bell', 22) }}<span>告警</span>
+      <span class="fg-tabbar__badge" data-pending-count {% if not pending_count %}hidden{% endif %}>{{ pending_count if pending_count is not none else 0 }}</span>
+    </a>
+    <a class="fg-tabbar__item {% if current.startswith('/nurse/history') %}is-active{% endif %}"
+       href="/nurse/history" {% if current.startswith('/nurse/history') %}aria-current="page"{% endif %}>
+      {{ icon('history', 22) }}<span>记录</span>
+    </a>
+    {% endif %}
+    {#- 2026-11-04：底栏「我的」Tab 删除（/me 整页下线，个人卡片进了右上角头像）。
+        原来这里注着「不叫『我的记录』，第四个 Tab 已经是『我的』会撞名」——
+        第四个 Tab 没了，那个顾虑也一起没了。 -#}
+  </nav>
+
+  <div class="fg-toast-root" id="fg-toast-root" aria-live="polite"></div>
+  {#- 新告警弹窗只给值班护士：护士长看列表自动刷新，管理员不看临床数据 -#}
+  {% if role == 'nurse' %}{% include "_alarm_popup.html" %}{% endif %}
+  {#- 改密弹窗全局挂载（2026-11-05）：头像下拉的「修改密码」就地开，不再整页跳 /settings。
+      `/settings` 页面本身仍保留 —— 首登强制改密要靠它（_guard 重定向），删了就是死锁。 -#}
+  {% include "_password_modal.html" %}
+  <script src="{{ asset('app.js') }}" defer></script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

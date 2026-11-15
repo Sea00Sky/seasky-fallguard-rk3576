@@ -1,0 +1,167 @@
+{# ==========================================================================
+   区域值守 /head/zones（P12 P4）
+   三块：未分配区域的护士（最急）→ 未归区点位（补归）→ 区域与负责人（只读）
+   上下文：zones[]（含 assignees[]/point_n/device_n）、unzoned[]、unassigned[]
+   ========================================================================== #}
+{% extends "base.html" %}
+{% from "_macros.html" import icon, empty_state, no_zone_short %}
+
+{% block title %}区域值守 · 衡护 HENGUARD{% endblock %}
+{% block page_key %}head-zones{% endblock %}
+{#- 2026-11-04 用户：「区域值守这几个大字页不要」。与总览 / 台账 / 人员与账号一致：
+    标题收进 sr-only（左导航已标当前位置），页头改瘦版，把纵向空间留给三块面板。 -#}
+{% block page_title %}<span class="fg-sr-only">区域值守</span>{% endblock %}
+{% block page_head_class %} fg-page-head--slim{% endblock %}
+{#- 2026-11-04 用户要求删掉这段说明（连同下面「未归区点位」面板的副标题）：
+    「谁负责哪些区域…没有区域的点位，护士一律看不到…归区后立刻生效…」。
+    保留「未分配 = 默认拒绝」那一句 —— 它挂在**警示**位置（某某人现在看不到数据），
+    是当下的状态；删掉的这两句讲的是系统规则，看第二遍就不再提供信息。 -#}
+
+{% block content %}
+<div class="fg-col-12">
+
+  {# ---------- 一、没有任何区域的护士：默认拒绝，登录后一片空白 ---------- #}
+  {% if unassigned %}
+  <section class="fg-panel">
+    <div class="fg-panel__head">
+      <h2 class="fg-panel__title">未分配区域的值班护士 · {{ unassigned|length }} 人</h2>
+      <span class="fg-panel__sub">未分配 = 默认拒绝：这些人{{ no_zone_short() }}。</span>
+    </div>
+    <div class="fg-panel__body">
+      <div class="fg-table-wrap">
+        <table class="fg-table">
+          <thead>
+            <tr>
+              <th scope="col">姓名</th>
+              <th scope="col">登录名</th>
+              <th scope="col">操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for u in unassigned %}
+            <tr>
+              <td class="fg-nowrap">{{ u.name }}</td>
+              <td class="fg-mono fg-nowrap">{{ u.login_name }}</td>
+              <td class="fg-nowrap">
+                <a class="fg-btn fg-btn--secondary fg-btn--sm"
+                   href="/head/staff">去分配</a>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+  {% endif %}
+
+  {# ---------- 二、未归区点位：补归 ---------- #}
+  <section class="fg-panel">
+    <div class="fg-panel__head">
+      {#- 副标题 2026-11-04 按用户要求删除（同上：讲规则的句子，不是当下状态）。 -#}
+      <h2 class="fg-panel__title">未归区点位 · {{ unzoned|length }} 个</h2>
+    </div>
+    <div class="fg-panel__body">
+      {% if unzoned %}
+      <div class="fg-table-wrap">
+        <table class="fg-table">
+          <thead>
+            <tr>
+              <th scope="col">点位</th>
+              <th scope="col">告警地点</th>
+              <th scope="col">摄像头流</th>
+              <th scope="col">归到区域</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for p in unzoned %}
+            <tr>
+              <td>
+                {{ p.name }}
+                {% if not p.is_active %}<span class="fg-tag fg-tag--s3"><span class="fg-tag__mark"></span>停用</span>{% endif %}
+              </td>
+              <td class="fg-mono">{{ p.light_key }}</td>
+              <td class="fg-mono">{{ p.stream_path or '未配置' }}</td>
+              <td>
+                <form class="fg-inline-form"
+                      data-api-form data-api-endpoint="/api/v1/admin/points/{{ p.point_id }}"
+                      data-api-method="PATCH" data-success-text="已归区" data-reload="1">
+                  <select class="fg-select" name="zone_id" required
+                          aria-label="{{ p.name }} 归到哪个区域">
+                    <option value="">选择区域…</option>
+                    {% for z in zones %}
+                    <option value="{{ z.zone_id }}">{{ z.name }}</option>
+                    {% endfor %}
+                  </select>
+                  <button type="submit" class="fg-btn fg-btn--secondary fg-btn--sm">归区</button>
+                </form>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      {{ empty_state('所有点位都已归区', '', '', '', 'check') }}
+      {% endif %}
+    </div>
+  </section>
+
+  {# ---------- 三、区域与负责人：只读 ---------- #}
+  <section class="fg-panel">
+    <div class="fg-panel__head">
+      {#- 副标题 2026-11-04 按用户要求删除（同前两处：讲规则的句子）——
+          真要找分配入口，页脚那行「去人员与账号分配负责人 →」已经指得很清楚。 -#}
+      <h2 class="fg-panel__title">区域与负责人</h2>
+    </div>
+    <div class="fg-panel__body">
+      {% if zones %}
+      <div class="fg-table-wrap">
+        <table class="fg-table">
+          <thead>
+            <tr>
+              <th scope="col">区域</th>
+              <th scope="col">类型</th>
+              <th scope="col">楼层</th>
+              <th scope="col">点位 / 设备</th>
+              <th scope="col">负责护士</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for z in zones %}
+            <tr>
+              <td>
+                <span class="fg-nowrap">{{ z.name }}</span>
+                {% if not z.is_active %}<span class="fg-tag fg-tag--closed"><span class="fg-tag__mark"></span>已停用</span>{% endif %}
+              </td>
+              <td class="fg-nowrap">{{ zone_label(z.zone_type) }}</td>
+              <td class="fg-nowrap">{{ z.floor or '—' }}</td>
+              <td class="fg-mono fg-nowrap">{{ z.point_n }} / {{ z.device_n }}</td>
+              <td>
+                {% if z.assignees %}
+                <span class="fg-nowrap">
+                  {%- for a in z.assignees -%}
+                    {{ a.name }}{% if not a.is_active %}<span class="fg-tag fg-tag--closed"><span class="fg-tag__mark"></span>已禁用</span>{% endif %}{% if not loop.last %}、{% endif %}
+                  {%- endfor -%}
+                </span>
+                {% else %}
+                <span class="fg-tag fg-tag--pending"><span class="fg-tag__mark"></span>无人负责</span>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <p class="fg-hint fg-mt-3">
+        无人负责的区域，点位只有护士长和管理员看得见。
+        <a href="/head/staff">去人员与账号分配负责人 →</a>
+      </p>
+      {% else %}
+      {{ empty_state('本病区还没有区域', '区域由信息科管理员在「设备与点位」里创建。没有区域时，护士' ~ no_zone_short() ~ '。', '', '', 'map-pin') }}
+      {% endif %}
+    </div>
+  </section>
+
+</div>
+{% endblock %}

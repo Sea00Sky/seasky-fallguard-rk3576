@@ -1,0 +1,41 @@
+{# ==========================================================================
+   护士长「重开事件」弹窗（唯一处置动作）
+   独立成 partial，因为它要出现在两个地方：
+     1) 事件详情末尾（event_detail.html 包含，随 480px 抽屉一起注入 .fg-drawer__body）；
+     2) 事件台账页级（行内「重开」按钮，此时页面上还没有任何详情抽屉）。
+   两处同时存在时 id 会撞：列表页那份用 modal_id 传 `fg-reopen-modal-row`，
+   app.js 先找 `fg-reopen-modal`（详情自带的那份），找不到再退回行级这份。
+
+   表单的 data-event-uid 允许为空：app.js 的 revealActionPanel() 在点击时
+   按触发按钮回填，这样一份弹窗能服务整张表。
+   ========================================================================== #}
+{% from "_macros.html" import icon %}
+{% set _modal_id = modal_id if modal_id is defined and modal_id else 'fg-reopen-modal' %}
+{% set _uid = event.event_uid if event is defined and event else '' %}
+{% set _rev = (event.revision if event.revision is not none else 0) if event is defined and event else 0 %}
+<div class="fg-modal-root" id="{{ _modal_id }}" hidden>
+  <div class="fg-modal-overlay" data-modal-close></div>
+  <div class="fg-modal" role="dialog" aria-modal="true" aria-labelledby="{{ _modal_id }}-title">
+    <div class="fg-modal__head">
+      <h2 class="fg-modal__title" id="{{ _modal_id }}-title">重开事件</h2>
+      <button type="button" class="fg-drawer__close" data-modal-close aria-label="关闭">{{ icon('x', 20) }}</button>
+    </div>
+    <form data-action-form data-action="REOPEN"
+          data-event-uid="{{ _uid }}"
+          data-revision="{{ _rev }}">
+      <div class="fg-modal__body">
+        <p class="fg-modal__text">重开会把处置态改回「待接警」，并清空当前处置人；上一轮时间戳保留在审计里。</p>
+        <div class="fg-field fg-mt-4">
+          <label class="fg-label" for="{{ _modal_id }}-reason">重开原因<span class="fg-label__req" aria-hidden="true"></span></label>
+          <textarea class="fg-textarea" id="{{ _modal_id }}-reason" name="reason"
+                    maxlength="200" required placeholder="请说明为什么需要重开"></textarea>
+        </div>
+        <div class="fg-error-text fg-mt-3" data-form-error hidden></div>
+      </div>
+      <div class="fg-modal__foot">
+        <button type="button" class="fg-btn fg-btn--secondary" data-modal-close>取消</button>
+        <button type="submit" class="fg-btn fg-btn--danger-solid">确认重开</button>
+      </div>
+    </form>
+  </div>
+</div>

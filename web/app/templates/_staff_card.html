@@ -1,0 +1,194 @@
+{# ==========================================================================
+   人员档案（抽屉内容）/head/staff?u=<user_id>
+   由 head_staff.html include 进 .fg-drawer__body；app.js 的 loadDetail()
+   会**整块替换** .fg-drawer__body，所以这里不许再套一层 .fg-drawer__body。
+   上下文：card_user（账号一行 + 今日/近 7 天工作量）、card_events[]、
+           zones[]、ward_median（全病区今日中位响应，参照物）
+
+   2026-11-04 第二轮（用户：「这个人物单页侧页有点简陋，且不要加人物拼音」）：
+     · 头像块用**姓名首字**，名字下面**不再挂 limin 这类拼音/登录名**
+     · 今日三个数是**大号等宽数字**，不再是一排灰标签小字
+     · 加误报率横条 + 「本人中位 vs 全病区中位」——「48 秒」单独看说明不了快慢
+   ========================================================================== #}
+{% from "_macros.html" import icon, fmt_time, fmt_datetime, sev_tag, disposition_tag,
+                             duration_text, empty_state, no_zone_text %}
+{% set a = card_user %}
+{# 误报率 = 今日**闭环**里被标成误报的比例。
+   分母必须是闭环数而不是接警数：今天结掉的活里可能有一半是昨天接的警，
+   拿接警当分母会算出 >100% 的怪数。 #}
+{% set fa_pct = ((a.false_today * 100 / a.closed_today) | round | int) if a.closed_today else 0 %}
+{% set fa_week_pct = ((a.false_week * 100 / a.closed_week) | round | int) if a.closed_week else 0 %}
+
+<div class="fg-pcard">
+  {# ---------- 身份行 ---------- #}
+  <div class="fg-pcard__head">
+    <div class="fg-pcard__avatar" aria-hidden="true">{{ (a.display_name or '?')[:1] }}</div>
+    <div class="fg-pcard__id">
+      <div class="fg-pcard__name">{{ a.display_name or '—' }}</div>
+      <div class="fg-pcard__tags">
+        {%- if a.is_active %}
+        <span class="fg-tag fg-tag--resolved"><span class="fg-tag__mark"></span>启用</span>
+        {%- else %}
+        <span class="fg-tag fg-tag--closed"><span class="fg-tag__mark"></span>已禁用</span>
+        {%- endif %}
+        {%- if a.locked %}
+        <span class="fg-tag fg-tag--pending"><span class="fg-tag__mark"></span>已锁定</span>
+        {%- elif a.is_active and not a.last_login_at %}
+        <span class="fg-tag fg-tag--test"><span class="fg-tag__mark"></span>从未登录</span>
+        {%- elif a.is_active and a.must_change_password %}
+        <span class="fg-tag fg-tag--test"><span class="fg-tag__mark"></span>待改密</span>
+        {%- endif %}
+      </div>
+    </div>
+    <button type="button" class="fg-drawer__close" data-drawer-close aria-label="关闭档案">
+      {{ icon('x', 20) }}
+    </button>
+  </div>
+
+  {# ---------- 工作量 ---------- #}
+  <div class="fg-detail__section">
+    <div class="fg-detail__title">工作量</div>
+    <div class="fg-pstats">
+      <div class="fg-pstat">
+        <span class="fg-pstat__k">今日接警</span>
+        <span class="fg-pstat__v">{{ a.acked_today }}</span>
+      </div>
+      <div class="fg-pstat">
+        <span class="fg-pstat__k">今日闭环</span>
+        <span class="fg-pstat__v">{{ a.closed_today }}</span>
+      </div>
+      <div class="fg-pstat">
+        <span class="fg-pstat__k">其中误报</span>
+        <span class="fg-pstat__v {% if a.false_today %}is-warn{% endif %}">{{ a.false_today }}</span>
+      </div>
+    </div>
+
+    {% if a.closed_today %}
+    <div class="fg-pbar-row">
+      <span class="fg-pbar-row__k">误报率</span>
+      <span class="fg-pbar" role="img"
+            aria-label="误报率 {{ fa_pct }}%">
+        <span class="fg-pbar__fill" style="width: {{ fa_pct }}%"></span>
+      </span>
+      <span class="fg-pbar-row__v">{{ fa_pct }}%</span>
+    </div>
+    {% endif %}
+
+    <p class="fg-pcard__note">
+      {%- if a.median_today is not none -%}
+      中位响应 <b class="fg-mono">{{ duration_text(a.median_today) }}</b>
+      {%- if ward_median is defined and ward_median is not none %}
+      <span class="fg-muted">· 全病区 {{ duration_text(ward_median) }}</span>
+      {%- endif -%}
+      {%- else -%}
+      今天还没有接警记录{% if a.open_now %}，手上还有 <b>{{ a.open_now }}</b> 条未闭环{% endif %}
+      {%- endif -%}
+    </p>
+
+    <p class="fg-pcard__note">
+      近 7 天：接警 <b class="fg-mono">{{ a.acked_week }}</b> ·
+      闭环 <b class="fg-mono">{{ a.closed_week }}</b> ·
+      误报 <b class="fg-mono">{{ a.false_week }}</b>{% if a.closed_week %}<span class="fg-muted">（{{ fa_week_pct }}%）</span>{% endif %} ·
+      中位响应 <b class="fg-mono">{{ duration_text(a.median_week) }}</b>
+    </p>
+  </div>
+
+  {# ---------- 负责区域 ---------- #}
+  <div class="fg-detail__section">
+    <div class="fg-detail__title">负责区域</div>
+    {% if a.zone_names %}
+    <div class="fg-zone-chips">
+      {% for z in a.zone_names %}<span class="fg-zone-chip">{{ z }}</span>{% endfor %}
+    </div>
+    {% else %}
+    <p class="fg-pcard__note">
+      <span class="fg-tag fg-tag--pending"><span class="fg-tag__mark"></span>未分配</span>
+      {{ no_zone_text() }}。
+    </p>
+    {% endif %}
+  </div>
+
+  {# ---------- 账号 ---------- #}
+  <div class="fg-detail__section">
+    <div class="fg-detail__title">账号</div>
+    <div class="fg-detail__grid">
+      <div>
+        <span class="fg-detail__k">最后登录</span>
+        <span class="fg-detail__v">{{ fmt_datetime(a.last_login_at) }}</span>
+      </div>
+      <div>
+        <span class="fg-detail__k">创建时间</span>
+        <span class="fg-detail__v">{{ fmt_datetime(a.created_at) }}</span>
+      </div>
+      <div>
+        <span class="fg-detail__k">创建人</span>
+        <span class="fg-detail__v">{{ a.created_by_name or '—' }}</span>
+      </div>
+      <div>
+        <span class="fg-detail__k">密码状态</span>
+        <span class="fg-detail__v">
+          {%- if a.must_change_password -%}首登未改密{%- else -%}已设置{%- endif -%}
+        </span>
+      </div>
+      <div>
+        <span class="fg-detail__k">连续失败</span>
+        <span class="fg-detail__v">{{ a.failed_count or 0 }} 次</span>
+      </div>
+      <div>
+        <span class="fg-detail__k">锁定至</span>
+        <span class="fg-detail__v">
+          {%- if a.locked -%}{{ fmt_time(a.locked_until, '%m-%d %H:%M') }}{%- else -%}—{%- endif -%}
+        </span>
+      </div>
+    </div>
+  </div>
+
+  {# ---------- 最近处置 ---------- #}
+  <div class="fg-detail__section">
+    <div class="fg-detail__title">最近处置的事件</div>
+    {% if card_events %}
+    <div class="fg-staff-events">
+      {% for e in card_events %}
+      <a class="fg-staff-event" href="/head/events/{{ e.event_uid }}">
+        <span class="fg-staff-event__time">{{ fmt_time(e.received_at, '%m-%d %H:%M') }}</span>
+        {{ sev_tag(e.severity) }}
+        <span class="fg-staff-event__loc">{{ e.location or '未记录位置' }}</span>
+        <span class="fg-staff-event__tag">{{ disposition_tag(e.disposition_state) }}</span>
+      </a>
+      {% endfor %}
+    </div>
+    {% else %}
+    {{ empty_state('还没有处置过事件', '', '', '', 'inbox') }}
+    {% endif %}
+  </div>
+
+  {# ---------- 动作 ----------
+     和行内那组按钮是同一套：data-zone-open 走页级弹窗（z-index 120 > 抽屉 100），
+     data-api-action 走 app.js 的 document 委托。成功后 callApi 会 reload，
+     地址里还带着 ?u=，所以抽屉会原地重开并显示新状态。 #}
+  <div class="fg-detail__section fg-staff-card__actions">
+    <button type="button" class="fg-btn fg-btn--secondary fg-btn--sm"
+            data-zone-open="{{ a.user_id }}"
+            data-zone-user="{{ a.display_name or a.login_name }}"
+            data-zone-ids="{{ a.zone_ids | join(',') }}">分配区域</button>
+    <button type="button" class="fg-btn fg-btn--secondary fg-btn--sm"
+            data-api-action
+            data-api-url="/api/v1/admin/users/{{ a.user_id }}/reset-password"
+            data-api-method="POST"
+            data-confirm="重置后旧密码立即失效，确认重置 {{ a.display_name }} 的密码？">重置密码</button>
+    {% if a.is_active %}
+    <button type="button" class="fg-btn fg-btn--ghost fg-btn--sm"
+            data-api-action
+            data-api-url="/api/v1/admin/users/{{ a.user_id }}"
+            data-api-method="PATCH"
+            data-api-body='{"is_active": false}'
+            data-confirm="禁用后该账号将无法登录，确认禁用 {{ a.display_name }}？">禁用账号</button>
+    {% else %}
+    <button type="button" class="fg-btn fg-btn--ghost fg-btn--sm"
+            data-api-action
+            data-api-url="/api/v1/admin/users/{{ a.user_id }}"
+            data-api-method="PATCH"
+            data-api-body='{"is_active": true}'>启用账号</button>
+    {% endif %}
+  </div>
+</div>

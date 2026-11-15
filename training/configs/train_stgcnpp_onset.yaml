@@ -1,0 +1,54 @@
+# Phase 3.6 — onset-position ablation on the same windows / pkl as Phase 3.3.
+# Single variable vs configs/train_stgcnpp.yaml: train.onset_weighting.
+# Class weights stay off so the effect of onset weighting is isolated.
+
+data:
+  ann_file: datasets/pyskl/v2/annotations.pkl
+  clip_len: 64
+  num_person: 1
+  num_classes: 2
+  class_names: [non_fall, fall]
+  batch_size: 16
+  num_workers: 2
+
+model:
+  type: RecognizerGCN
+  backbone:
+    type: STGCN
+    gcn_adaptive: init
+    gcn_with_res: true
+    tcn_type: mstcn
+    graph_cfg:
+      layout: coco
+      mode: spatial
+  cls_head:
+    type: GCNHead
+    num_classes: 2
+    in_channels: 256
+
+train:
+  epochs: 30
+  optimizer: SGD
+  lr: 0.02
+  momentum: 0.9
+  weight_decay: 0.0005
+  nesterov: true
+  scheduler: cosine
+  eta_min_ratio: 0.01
+  seed: 42
+  device: cuda
+  class_weights: null
+  # Positive windows whose fall onset is late are mostly pre-fall context.
+  # Weight 1.0 up to full_until, then linear decay to min_weight at offset 1.0.
+  onset_weighting:
+    enabled: true
+    full_until: 0.5
+    min_weight: 0.25
+  eval_every: 1
+
+eval:
+  threshold: 0.5
+
+output:
+  run_dir: runs/stgcnpp_v2_onset
+  report: reports/train_stgcnpp_v2_onset.md

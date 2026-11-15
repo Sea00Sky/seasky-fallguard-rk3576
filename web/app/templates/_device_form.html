@@ -1,0 +1,160 @@
+{# ==========================================================================
+   设备新增/编辑表单（partial）—— 作为**右侧抽屉内容**渲染（2026-11-05 三改）。
+   调用方必须提供：
+     f            设备 dict（编辑）或 none（新增）
+     show_new     True 时即使是新增也渲染
+     form_back    取消 / 保存成功后的回跳地址
+     ward_list / mount_labels / base / admin_mode
+
+   七改（2026-11-05 用户拍板「点位选设备」）：表单里**没有安装点位**。
+   设备只登记自己（设备码/型号/摄像头/推流），装在哪由绑定了它的点位决定。
+
+   用户原话「做成侧页抽屉可以吗，别放下面了，一点也不方便」⇒ 表单不再挂在
+   设备列表下方，改由 head_devices.html 的抽屉壳承载。取消按钮带
+   `data-drawer-close`：有 JS 时关抽屉，无 JS 时按 href 走（同一个地址）。
+   ========================================================================== #}
+{#- ⚠️ include 不继承调用方的宏导入，这里必须自己 import -#}
+{% from "_macros.html" import icon %}
+{#- 新增 / 编辑表单：服务端渲染，不依赖 JS 也能用 -#}
+{% if admin_mode and (show_new or f) %}
+<section class="fg-panel fg-col-12">
+  <div class="fg-panel__head">
+    <h2 class="fg-panel__title">{{ '编辑设备' if f else '新增设备' }}</h2>
+    {#- 十九改（2026-11-06 用户「把编辑设备页面的无关文字删掉」）：面板头副标题整块删 ——
+        ①「设备码与所属病区不可改；改位置只影响之后入库的告警」= 系统规则（设备码是 readonly，
+           一眼可见；位置快照是后台行为）；
+        ②「创建后会生成一次性接入密钥，只显示一次」= 与创建后弹出的密钥弹窗逐字重复。 -#}
+    <div class="fg-panel__actions">
+      <a class="fg-btn fg-btn--ghost fg-btn--sm" href="{{ form_back }}" data-drawer-close>取消</a>
+      <button type="button" class="fg-drawer__close" data-drawer-close aria-label="关闭">
+        {{ icon('x', 20) }}
+      </button>
+    </div>
+  </div>
+  <form data-api-form
+        data-api-endpoint="{{ '/api/v1/admin/devices/' ~ f.device_id if f else '/api/v1/admin/devices' }}"
+        data-api-method="{{ 'PATCH' if f else 'POST' }}"
+        data-success-url="{{ form_back }}"
+        data-success-text="{{ '已保存' if f else '设备已创建' }}">
+    <div class="fg-panel__body">
+      <div class="fg-formgrid">
+        <div class="fg-field">
+          <label class="fg-label" for="dev-code">设备码<span class="fg-label__req" aria-hidden="true"></span></label>
+          {#- ⚠️ 编辑时**不能带 name**：只读字段仍会被提交，而 PATCH 的模型
+                `extra="forbid"` 会把它当非法参数直接 422（2026-11-01 踩过）。 -#}
+          <input class="fg-input fg-mono" id="dev-code"
+                 {% if not f %}name="device_code" required{% else %}readonly{% endif %}
+                 maxlength="32"
+                 value="{{ f.device_code if f else '' }}"
+                 pattern="[A-Z0-9][A-Z0-9_-]{2,31}" placeholder="K7C-4FA-02">
+          {#- 十九改：只留**填的时候要知道**的格式要求，删「填到板端 push_url 里」。 -#}
+          <span class="fg-hint">大写字母/数字/下划线/连字符，3–32 位。</span>
+        </div>
+        {% if admin_mode and not f %}
+        {#- 管理员不绑病区 ⇒ 建设备时必须指定病区；护士长由后端强制本病区 -#}
+        {% set ward_list = wards if wards is defined and wards else [] %}
+        <div class="fg-field">
+          <label class="fg-label" for="dev-ward">所属病区<span class="fg-label__req" aria-hidden="true"></span></label>
+          <select class="fg-select" id="dev-ward" name="ward_id" required>
+            <option value="">请选择病区</option>
+            {% for w in ward_list %}
+            <option value="{{ w.ward_id }}">{{ w.ward_name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        {% endif %}
+        <div class="fg-field fg-field--full">
+          <label class="fg-label" for="dev-name">设备名（可选）</label>
+          <input class="fg-input" id="dev-name" name="device_name" maxlength="64"
+                 value="{{ f.device_name if f else '' }}"
+                 placeholder="{{ '留空就用设备码' if not f else f.device_code }}">
+          {#- 十九改：第一句与占位符「留空就用设备码」重复 ⇒ 删；
+              第二句回答「为什么这里没有位置字段」，并指向真正能改的地方 —— **是链接，留着**。 -#}
+          <span class="fg-hint">
+            装在哪由「<a href="/admin/points">点位与画面</a>」里的点位决定。
+          </span>
+        </div>
+        <div class="fg-field fg-field--full">
+          <label class="fg-label" for="dev-stream">推流路径</label>
+          <input class="fg-input fg-mono" id="dev-stream" name="stream_path" maxlength="32"
+                 value="{{ f.stream_path or '' if f else '' }}" placeholder="live">
+          {#- 十九改：删「推流是设备自己的属性 / 点位绑定后画面骨架走这条流」（都是系统规则，
+              点位页已经在讲）；只留一句**留空的后果** —— 那是填的时候真会犹豫的地方。 -#}
+          <span class="fg-hint">设备推到 mediamtx 的路径名；留空 = 没配摄像头。</span>
+        </div>
+        <div class="fg-field fg-field--full">
+          <label class="fg-label" for="dev-locdetail">机位描述</label>
+          <input class="fg-input" id="dev-locdetail" name="location_detail" maxlength="100"
+                 value="{{ f.location_detail or '' if f else '' }}" placeholder="3 号病房门口上方">
+        </div>
+        <div class="fg-field">
+          <label class="fg-label" for="dev-mount">安装方式</label>
+          <select class="fg-select" id="dev-mount" name="mount_type">
+            <option value="">未填</option>
+            {% for key, label in mount_labels.items() %}
+            <option value="{{ key }}" {% if f and f.mount_type == key %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="fg-field">
+          <label class="fg-label" for="dev-height">安装高度（cm）</label>
+          <input class="fg-input" id="dev-height" name="mount_height_cm" type="number"
+                 min="30" max="600" step="1"
+                 value="{{ f.mount_height_cm if f and f.mount_height_cm is not none else '' }}">
+        </div>
+        <div class="fg-field">
+          <label class="fg-label" for="dev-dir">朝向 / 覆盖范围</label>
+          <input class="fg-input" id="dev-dir" name="view_direction" maxlength="100"
+                 value="{{ f.view_direction or '' if f else '' }}" placeholder="朝南，覆盖 12–18 床门口">
+        </div>
+        <div class="fg-field">
+          <label class="fg-label" for="dev-fov">视场角（°）</label>
+          <input class="fg-input" id="dev-fov" name="lens_fov_deg" type="number"
+                 min="10" max="180" step="1"
+                 value="{{ f.lens_fov_deg if f and f.lens_fov_deg is not none else '' }}">
+        </div>
+        <div class="fg-field">
+          <label class="fg-label" for="dev-model">盒子型号</label>
+          <input class="fg-input" id="dev-model" name="device_model" maxlength="64"
+                 value="{{ f.device_model or '' if f else '' }}" placeholder="Kickpi K7C / RK3576">
+        </div>
+        <div class="fg-field">
+          <label class="fg-label" for="dev-hwid">硬件唯一号</label>
+          <input class="fg-input fg-mono" id="dev-hwid" name="hardware_id" maxlength="64"
+                 value="{{ f.hardware_id or '' if f else '' }}">
+        </div>
+        <div class="fg-field">
+          <label class="fg-label" for="dev-fw">固件版本</label>
+          <input class="fg-input" id="dev-fw" name="firmware_ver" maxlength="64"
+                 value="{{ f.firmware_ver or '' if f else '' }}">
+        </div>
+        <div class="fg-field">
+          <label class="fg-label" for="dev-cam">摄像头型号</label>
+          <input class="fg-input" id="dev-cam" name="camera_model" maxlength="64"
+                 value="{{ f.camera_model or '' if f else '' }}" placeholder="IMX415">
+        </div>
+        <div class="fg-field">
+          <label class="fg-label" for="dev-camserial">摄像头序列号</label>
+          <input class="fg-input fg-mono" id="dev-camserial" name="camera_serial" maxlength="64"
+                 value="{{ f.camera_serial or '' if f else '' }}">
+        </div>
+        <div class="fg-field">
+          <label class="fg-label" for="dev-commissioned">投运日期</label>
+          <input class="fg-input" id="dev-commissioned" name="commissioned_at" type="date"
+                 value="{{ f.commissioned_at[:10] if f and f.commissioned_at else '' }}">
+        </div>
+        <div class="fg-field fg-field--full">
+          <label class="fg-label" for="dev-notes">备注</label>
+          <textarea class="fg-textarea" id="dev-notes" name="notes" maxlength="500"
+                    rows="2">{{ f.notes or '' if f else '' }}</textarea>
+        </div>
+      </div>
+      <div class="fg-error-text fg-mt-3" data-form-error hidden></div>
+    </div>
+    <div class="fg-panel__foot">
+      <button type="submit" class="fg-btn fg-btn--primary">{{ '保存修改' if f else '创建设备' }}</button>
+      <a class="fg-btn fg-btn--ghost" href="{{ form_back }}" data-drawer-close>取消</a>
+    </div>
+  </form>
+</section>
+{% endif %}

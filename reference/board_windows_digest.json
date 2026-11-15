@@ -1,0 +1,160 @@
+{
+  "source": "results/regress/r1/raw",
+  "n_videos": 19,
+  "n_windows": 915,
+  "prob_sha256_all": "77bce10c04f97cb296e733b70713713ac072521add0067561bbc9bd2319378e4",
+  "per_video": {
+    "board:done:clip_0831_172408": {
+      "n_frames": 1334,
+      "n_windows": 85,
+      "prob_sha256": "166c6e54ec3eedc06ddcee3a7678c06b14b94a3288d7e5bf7d50f9444558c20c",
+      "max_prob": 0.9839091258071755,
+      "n_scored": 73,
+      "n_observed": 103
+    },
+    "board:integral_test:clip_0831_172531": {
+      "n_frames": 979,
+      "n_windows": 62,
+      "prob_sha256": "810b2a486a60f483de68a05a67196b88324fe459cd43330bbaa7ef8add409e9c",
+      "max_prob": 0.9986168825762602,
+      "n_scored": 60,
+      "n_observed": 83
+    },
+    "board:integral_test:clip_0831_172709": {
+      "n_frames": 605,
+      "n_windows": 37,
+      "prob_sha256": "6cfa098332b2f0df6ff0d3155f26c84071922de9f86047c2a8567b3817cefa07",
+      "max_prob": 0.9525299894869302,
+      "n_scored": 32,
+      "n_observed": 57
+    },
+    "board:integral_test:clip_0831_172822": {
+      "n_frames": 1164,
+      "n_windows": 74,
+      "prob_sha256": "7f7129375eff81073114784b5a1148d1baa4f893574afe1160892708d0b57cda",
+      "max_prob": 0.9415467589589032,
+      "n_scored": 58,
+      "n_observed": 103
+    },
+    "board:integral_test:clip_0831_172939": {
+      "n_frames": 850,
+      "n_windows": 53,
+      "prob_sha256": "eb1056f23923bb4ded2237eab7c9a64f2cdd3f213fb6e343a6b5d895401b1ca9",
+      "max_prob": 0.999550547689102,
+      "n_scored": 45,
+      "n_observed": 75
+    },
+    "board:integral_test:clip_0831_173416": {
+      "n_frames": 3,
+      "n_windows": 0,
+      "prob_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "max_prob": 0.0,
+      "n_scored": 0,
+      "n_observed": 0
+    },
+    "board:integral_test:clip_0831_173504": {
+      "n_frames": 1294,
+      "n_windows": 83,
+      "prob_sha256": "d47b996c5773cca18a47fd398a1043bb6f448d29a150a3258d1a4201f2b25234",
+      "max_prob": 0.9996485617367191,
+      "n_scored": 104,
+      "n_observed": 191
+    },
+    "board:integral_test:clip_0831_173619": {
+      "n_frames": 1311,
+      "n_windows": 84,
+      "prob_sha256": "5468e0f0b0d1ffd4159f1f40cf5ccb717850c7a4d48ba19a1286ac5b303c7e3c",
+      "max_prob": 0.9986382966250248,
+      "n_scored": 142,
+      "n_observed": 210
+    },
+    "board:integral_test:clip_0831_173910": {
+      "n_frames": 1208,
+      "n_windows": 77,
+      "prob_sha256": "75da0d15fca65db78d23b9059fffe96a853c4a614ae72c4e36bd65138de9d83b",
+      "max_prob": 0.998774432551617,
+      "n_scored": 137,
+      "n_observed": 197
+    },
+    "board:integral_test:clip_0831_174016": {
+      "n_frames": 657,
+      "n_windows": 40,
+      "prob_sha256": "4e26b7bf2d70e7890f8f6a1d2b942644e3d18407acc9b34479675778684dadab",
+      "max_prob": 0.9746528253908474,
+      "n_scored": 65,
+      "n_observed": 124
+    },
+    "board:integral_test:clip_0831_174226": {
+      "n_frames": 714,
+      "n_windows": 44,
+      "prob_sha256": "37a65a9e7589e092aad2db2f6ee01ed225468ca9e62c68826c3e3e4d9a1ca8d0",
+      "max_prob": 0.9898106628082411,
+      "n_scored": 92,
+      "n_observed": 146
+    },
+    "board:squat:clip_0907_170041": {
+      "n_frames": 1012,
+      "n_windows": 64,
+      "prob_sha256": "ae7e0b307b6774b136892eb1c9597115e86d6b3b67df2607baf85901b02c1387",
+      "max_prob": 0.08262329229931159,
+      "n_scored": 87,
+      "n_observed": 153
+    },
+    "board:squat:clip_0907_170158": {
+      "n_frames": 854,
+      "n_windows": 53,
+      "prob_sha256": "89907d0a2b9e0bcd1aebacaee0ef9b04725930a36f52b63dffd82797649bac8f",
+      "max_prob": 0.2220246807679208,
+      "n_scored": 75,
+      "n_observed": 123
+    },
+    "board:squat:clip_0907_170254": {
+      "n_frames": 1311,
+      "n_windows": 84,
+      "prob_sha256": "6db117c843724199966446fc944652b8421e9c01b42ea8b8fcb1e7a2bf1cc708",
+      "max_prob": 0.7914989334100753,
+      "n_scored": 141,
+      "n_observed": 260
+    },
+    "board:squat:clip_0907_170511": {
+      "n_frames": 634,
+      "n_windows": 39,
+      "prob_sha256": "d414d9f0b20d3e7c793e14e3a5fe622fbc9e5777245b90bef343455bf0e0b6d0",
+      "max_prob": 0.16817278492367024,
+      "n_scored": 33,
+      "n_observed": 109
+    },
+    "board:squat:clip_0907_170602": {
+      "n_frames": 258,
+      "n_windows": 14,
+      "prob_sha256": "97fc92c3ee09365362533012af7cb1fcc625ee46ee02e6c452d260c2c9c41282",
+      "max_prob": 0.010328152519305191,
+      "n_scored": 13,
+      "n_observed": 41
+    },
+    "board:squat:clip_0907_170618": {
+      "n_frames": 219,
+      "n_windows": 11,
+      "prob_sha256": "2ea6f1f453086e051d5ade5f406df820922ef02b408f3788cb1152afbb6bd91c",
+      "max_prob": 0.024987794590900315,
+      "n_scored": 13,
+      "n_observed": 29
+    },
+    "board:squat:clip_0907_170642": {
+      "n_frames": 133,
+      "n_windows": 5,
+      "prob_sha256": "06b1917c32c26b5a7516b0784f88ae4b744c2cc2475fc054557dfe5688e192e3",
+      "max_prob": 0.0008986912942818285,
+      "n_scored": 5,
+      "n_observed": 10
+    },
+    "board:squat:clip_0907_170656": {
+      "n_frames": 139,
+      "n_windows": 6,
+      "prob_sha256": "1522941a9e8e9750d615890badbbd28e8b83f3105a1fcd0491d917bd78e54485",
+      "max_prob": 0.9705764200363561,
+      "n_scored": 12,
+      "n_observed": 22
+    }
+  }
+}

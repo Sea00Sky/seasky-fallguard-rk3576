@@ -1,0 +1,235 @@
+{# ==========================================================================
+   登录页 /login
+   布局：左右 56% / 44%。
+
+   2026-11-11（第二次重做）用户：「你不一定一定要这种样式的，肯定有更好的」
+   「我要的是美观和动效，我要的是好看，我这是产品」。
+
+   第一次重做做的是**一条手绘的夜里医院走廊**（单点透视 SVG，200 行）——
+   技术上没错，方向上错了：一张装饰插画再精致，也**不说明这个产品在干什么**，
+   而且全页**一个动效都没有**。用户一句「我这是产品」把它否掉，是对的。
+
+   这次的做法：
+     · 左栏主视觉 = **产品自己的闭环**：检测 → 告警 → 处置 → 归档。
+       四个灯直接取五态色阶里现成的四个（idle / pending / ack / resolved），
+       不新配色；一颗光点沿线走到底，走到哪个灯哪个灯亮一下，5.6s 一轮。
+     · 全页动效：进场分四拍升起 → 闭环光点常驻循环 → 右栏表单错拍浮现 →
+       聚焦发光 / 按钮抬起按压 / chip 浮起 / 报错抖动。
+       ⚠️ 全局 `prefers-reduced-motion: reduce` 在 app.css 3650 行统一兜底，
+          这里不必也不该再写一份。
+     · 右栏从「直接摊在米底上」改成**白卡片**（--fg-bg-raised + 4px 圆角 + 阴影），
+       表单才有"一块东西"的实体感。V1 圆角只允许 0/2/4px，守住。
+
+   ⚠️ 登录页上**不许出现看起来像告警的东西**：护士还没登录就看见一片红，
+      会以为病区出事了。所以闭环画的是**流程**（没有任何常亮红灯、没有任何数字），
+      实时事实只有下面「系统状态」里那两条，且都是真的。
+
+   规则：没有角色下拉框；错误文案统一「账号或密码不正确」（防枚举）。
+   上下文：next_url、error、reason、gateway_online、camera_ok、camera_total、
+          last_login_at、demo_accounts、demo_password
+   ========================================================================== #}
+{% from "_macros.html" import icon %}
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>登录 · 衡护 HENGUARD</title>
+  <link rel="stylesheet" href="{{ asset('tokens.css') }}">
+  <link rel="stylesheet" href="{{ asset('app.css') }}">
+</head>
+{% set gateway = gateway_online if gateway_online is defined else true %}
+{% set cam_ok = camera_ok if camera_ok is defined else 1 %}
+{% set cam_total = camera_total if camera_total is defined else 1 %}
+<body data-page="login">
+  <main class="fg-login">
+    {# ---------- 左：品牌区（56%） ---------- #}
+    <section class="fg-login__brand" aria-label="衡护品牌信息">
+      {# 环境光：一块极慢漂移的柔光，让深绿底不是一块死板的平色。
+         24s 一轮、位移很小 —— 它的作用是"这页是活的"，不是让人注意到它。 #}
+      <div class="fg-login__aurora" aria-hidden="true"></div>
+
+      <div class="fg-login__brand-top">
+        <span class="fg-login__logo">{{ icon('logo', 36) }}</span>
+        <span class="fg-login__wordmark">
+          <strong>衡护</strong>
+          <span>HENGUARD</span>
+        </span>
+      </div>
+
+      {# hero：主张 + 闭环包成一组，**在左栏剩余的竖直空间里居中**。
+         不包的话这两个块会顶在上边，下面留出 400px 的空 —— 1440×900 实测就是
+         「顶上挤着一堆、中间一大片空」，看着像没做完。 #}
+      <div class="fg-login__hero">
+        <h1 class="fg-login__tagline">病区跌倒监护</h1>
+
+        {# ---------- 处置闭环 ----------
+            四步各自一个灯 + 一个标签；一条轨道把它们连起来，一颗光点沿线走。
+            外面那层 loopbox 给整块一块**有边界的深色面板** —— 改前只是一条
+            1px 细线加四个点，在 56% 宽的栏里太轻，压不住场。
+            ⚠️ 内边距只能加在 loopbox 上、**不能加到 ol 上**：
+               轨道和光点用 left:12.5% 定位，百分比按 ol 的**内边距盒**算。
+               ol 一旦有内边距，四个灯心就跟着内缩，轨道却还停在 12.5% 上，
+               两头各差 0.75×内边距 —— 静默错位，看不出来但就是对不齐。
+            aria-label 给整条闭环一句话，读屏用户不必靠视觉拼。 #}
+        <div class="fg-login__loopbox">
+          <p class="fg-login__loop-k" aria-hidden="true">处置闭环</p>
+          <ol class="fg-login__loop" aria-label="处置闭环：检测、告警、处置、归档">
+            <li class="fg-login__step">
+              <span class="fg-login__lamp fg-login__lamp--detect" aria-hidden="true"></span>
+              <span class="fg-login__step-label">检测</span>
+            </li>
+            <li class="fg-login__step">
+              <span class="fg-login__lamp fg-login__lamp--alert" aria-hidden="true"></span>
+              <span class="fg-login__step-label">告警</span>
+            </li>
+            <li class="fg-login__step">
+              <span class="fg-login__lamp fg-login__lamp--ack" aria-hidden="true"></span>
+              <span class="fg-login__step-label">处置</span>
+            </li>
+            <li class="fg-login__step">
+              <span class="fg-login__lamp fg-login__lamp--closed" aria-hidden="true"></span>
+              <span class="fg-login__step-label">归档</span>
+            </li>
+            <span class="fg-login__rail" aria-hidden="true"></span>
+            <span class="fg-login__pulse" aria-hidden="true"></span>
+          </ol>
+        </div>
+      </div>
+
+      {# 落款块：黄铜短线把它和上面的闭环分开，内容全是**真数据**。
+         原来这里是「班次 + 时间脊」——那是编的（见文件头注释）。
+         留下这三行是因为登录页唯一值得读的就是「设备现在是不是都在」。 #}
+      <div class="fg-login__meta">
+        <div class="fg-login__rule" aria-hidden="true"></div>
+        <p class="fg-login__status-k">系统状态</p>
+        <ul class="fg-login__status">
+          <li class="fg-login__status-item">
+            <span class="fg-login__dot {% if not gateway %}fg-login__dot--off{% endif %}" aria-hidden="true"></span>
+            <span>网关{% if gateway %}在线{% else %}离线{% endif %}</span>
+          </li>
+          <li class="fg-login__status-item">
+            <span class="fg-login__dot {% if cam_ok < cam_total %}fg-login__dot--off{% endif %}" aria-hidden="true"></span>
+            <span>摄像头 <span class="fg-login__num">{{ cam_ok }}/{{ cam_total }}</span></span>
+          </li>
+          {% if last_login_at is defined and last_login_at %}
+          <li class="fg-login__status-item fg-login__status-item--quiet">
+            <span>上次登录 <span class="fg-login__num">{{ last_login_at.strftime('%Y-%m-%d %H:%M') if last_login_at.strftime is defined else last_login_at }}</span></span>
+          </li>
+          {% endif %}
+        </ul>
+      </div>
+    </section>
+
+    {# ---------- 右：登录表单（44%） ---------- #}
+    <section class="fg-login__formside">
+      <div class="fg-login__card">
+        <h2 class="fg-login__title">登录衡护</h2>
+
+        {% if reason == 'expired' %}
+        <div class="fg-login__notice fg-mt-4" role="status">登录已过期，请重新登录。登录后将回到原页面。</div>
+        {% elif reason == 'idle' %}
+        <div class="fg-login__notice fg-mt-4" role="status">长时间未操作，已自动退出。请重新登录。</div>
+        {% endif %}
+
+        {% if error %}
+        <div class="fg-login__error fg-mt-4" role="alert">{{ error }}</div>
+        {% endif %}
+
+        <form class="fg-login__form" data-login-form data-default-redirect="/"
+              method="post" action="/login" novalidate>
+          <input type="hidden" name="next" value="{{ next_url or '' }}">
+
+          <div class="fg-login__field">
+            <label class="fg-login__label" for="login-name">账号</label>
+            <div class="fg-login__inputwrap">
+              <input class="fg-login__input" id="login-name" name="login_name" type="text"
+                     autocomplete="username" autocapitalize="none" spellcheck="false"
+                     placeholder="请输入登录名" required autofocus>
+            </div>
+          </div>
+
+          <div class="fg-login__field">
+            <label class="fg-login__label" for="login-password">密码</label>
+            <div class="fg-login__inputwrap">
+              <input class="fg-login__input fg-login__input--with-eye" id="login-password"
+                     name="password" type="password" autocomplete="current-password"
+                     placeholder="请输入密码" required>
+              <button type="button" class="fg-login__eye" data-toggle-password="#login-password"
+                      aria-pressed="false" aria-label="显示密码">
+                {{ icon('eye', 16) }}<span data-eye-label>显示</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="fg-login__error" data-login-error role="alert" hidden></div>
+
+          <button type="submit" class="fg-btn fg-btn--primary fg-login__submit" data-audio-unlock>
+            登录
+          </button>
+        </form>
+
+        {# ---------- 演示账号（毕设演示机专用，FG_DEMO_HINT=0 可关） ----------
+            改前排成三行表格，体量和「登录」按钮差不多，还压在按钮与说明之间。
+            现在收成一排 chip：姓名 + 角色，点一下就填。口令由部署时的
+            FG_DEMO_PASSWORD 提供，不配置就只提示账号、不显示口令。 #}
+        {% if demo_accounts %}
+        <div class="fg-login__demo">
+          <p class="fg-login__demo-head">
+            <span>演示账号</span>
+            {% if demo_password %}
+            <span class="fg-login__demo-pw">密码 <code>{{ demo_password }}</code></span>
+            {% endif %}
+          </p>
+          <div class="fg-login__demo-chips">
+            {% for account in demo_accounts %}
+            <button type="button" class="fg-login__chip"
+                    data-demo-fill
+                    data-login="{{ account.login }}"
+                    data-password="{{ demo_password }}"
+                    title="{{ account.desc }}">
+              <span class="fg-login__chip-name">{{ account.name }}</span>
+              <span class="fg-login__chip-role">{{ account.role }}</span>
+            </button>
+            {% endfor %}
+          </div>
+        </div>
+        {% endif %}
+
+        {#- 三条「必须读到」的说明，做成一个列表而不是三个独立段落。
+            改前是两条 <p>，各带 margin-top:16px —— 于是「表单→说明一」和
+            「说明一→说明二」的间距一样大，读起来像两个不相干的版块。
+            现在由 .fg-login__notes 统一管外边距、内部只留 8px，这几条才成为**一组**。
+            ⚠️ 图标列宽度写死 16px + flex-shrink:0（见 CSS），正文左边缘才会严丝合缝。
+
+            ⚠️ 2026-11-04 第78轮追改：第一句原来是「连续 5 次失败将锁定 15 分钟。
+            忘记密码请联系本病区护士长重置。」**一条**。实测整句自然宽 414px，
+            而正文可用宽只有 376px ⇒ 必然折行；text-wrap:balance 又把断点拉到中间
+            （204/210），切在「…15 分」/「钟。忘记…」中间，很难看。去掉 balance 更糟
+            （372/42，末行只剩三个字）。⇒ 拆成两条：各 190px / 224px，都是一整行。
+            「锁定规则」和「忘记密码怎么办」本来就是两件事，拆开也更顺。
+
+            图标配色有意分两级：锁 = **警告**（真会被锁 15 分钟）用琥珀；
+            钥匙、盾 = **说明**（怎么办 / 隐私声明都不是警报）用三级灰。 -#}
+        <ul class="fg-login__notes">
+          <li class="fg-login__note">
+            {{ icon('lock', 16) }}
+            <span>连续 5 次失败将锁定 15 分钟。</span>
+          </li>
+          <li class="fg-login__note fg-login__note--quiet">
+            {{ icon('key', 16) }}
+            <span>忘记密码请联系本病区护士长重置。</span>
+          </li>
+          <li class="fg-login__note fg-login__note--quiet">
+            {{ icon('shield', 16) }}
+            <span>本系统只显示「人员#编号」与「点位」，不采集患者姓名。</span>
+          </li>
+        </ul>
+      </div>
+    </section>
+  </main>
+
+  <script src="{{ asset('app.js') }}" defer></script>
+</body>
+</html>

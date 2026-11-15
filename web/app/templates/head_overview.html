@@ -1,0 +1,203 @@
+{# ==========================================================================
+   护士长病区总览 /head/overview
+   结构（2026-11-04 二次改版后的顺序）：
+     5 KPI → 24 小时告警分布 → 待处置队列 + 近期处置人 → 底部工具行（导出）
+   上下文：kpi{alerts,confirmed_falls,false_alarm_rate,unhandled,median_response_s}
+          hourly[{hour,count}]、pending_events[]、
+          recent_handlers[{display_name,count}]、retracted_today、as_of、period、user、ward
+
+   2026-11-04 第一次改版（用户：「护士长不用把画面放第一页」「护士长可以不管设备」）：
+     · 实时画面整块搬去独立入口 /head/camera（侧栏「病区画面」），本页不再建流；
+     · 「设备与模型」面板删除；点位状态带搬进 /head/camera 的左侧竖列。
+
+   2026-11-04 第二次改版（用户：「把 24 小时告警分布提到处置队列之前，
+   把病区总览四个大字去掉，把导出按钮放到下面，尽量使所有功能在一个页面」）：
+     · 24h 图挪到 KPI 正下方、队列之前 —— 先看"今天什么时候忙"，再看"谁在等"；
+     · 页头收成瘦页头（标题只留读屏），导出按钮从页头 actions 搬到页面最底部；
+     · 一屏化：≥1280 时页面本身不滚，队列/处置人列表各自内部滚（样式见
+       app.css「病区总览一屏」）。队列的「查看全部」从面板脚挪进面板头，
+       省掉一条 56px 的固定脚，头也永远看得见。
+   ========================================================================== #}
+{% extends "base.html" %}
+{% from "_macros.html" import icon, kpi_card, sev_tag, disposition_tag, fmt_time, iso, duration_text, empty_state %}
+
+{% block title %}病区总览 · 衡护 HENGUARD{% endblock %}
+{% block page_key %}head-overview{% endblock %}
+{#- 大标题按要求去掉。只留读屏版本：左导航已经标了当前位置，视觉上不再重复。 -#}
+{% block page_title %}<span class="fg-sr-only">病区总览</span>{% endblock %}
+{% block page_head_class %} fg-page-head--slim{% endblock %}
+
+{% set k = kpi if kpi is defined and kpi else {} %}
+{% set alerts = k.alerts if k.alerts is defined else {} %}
+{% set falls = k.confirmed_falls if k.confirmed_falls is defined else {} %}
+{% set far = k.false_alarm_rate if k.false_alarm_rate is defined else {} %}
+{% set unhandled = k.unhandled if k.unhandled is defined else {} %}
+{% set median = k.median_response_s if k.median_response_s is defined else {} %}
+{% set queue = pending_events if pending_events is defined and pending_events else [] %}
+{% set handlers = recent_handlers if recent_handlers is defined and recent_handlers else [] %}
+{% set hours = hourly if hourly is defined and hourly else [] %}
+
+{% set alert_delta = alerts.delta_vs_yesterday if alerts.delta_vs_yesterday is defined and alerts.delta_vs_yesterday is not none else none %}
+{% set fall_delta = falls.delta_vs_yesterday if falls.delta_vs_yesterday is defined and falls.delta_vs_yesterday is not none else none %}
+{% set far_num = far.numerator if far.numerator is defined else none %}
+{% set far_den = far.denominator if far.denominator is defined else none %}
+{% set median_n = median.n if median.n is defined else none %}
+
+{% block content %}
+{#- 页头副标题「今日 · 数据截至 HH:MM（每 30 秒刷新）」按要求删除（2026-11-04）。
+    ⚠️ 但 [data-refresh-every] 是整页自动刷新**唯一的计时源**（app.js tick()）：
+    连它一起删，KPI / 队列 / 图这些 data-refresh-region 就再也不会自更新。
+    所以可见文字去掉，隐藏的驱动节点留在 DOM 里（hidden = display:none，不占位）。 -#}
+<span hidden data-refresh-every="30" data-next-refresh=""></span>
+
+{# ---------- 5 KPI ----------
+   2026-11-04：5 张卡全部改为不可点。原来每张卡都链到 /head/events 的预置筛选，
+   护士长反映"看着像按钮、点进去又是另一页"，按需求去掉跳转（kpi_card 不传 href 即渲染 div）。 #}
+<div class="fg-kpis fg-kpis--5" data-refresh-region="overview-kpi">
+  {{ kpi_card('今日告警', alerts.value if alerts.value is defined else none,
+         ('较昨日 +' ~ alert_delta) if alert_delta is not none and alert_delta > 0 else
+         ('较昨日 ' ~ alert_delta) if alert_delta is not none else '较昨日 —') }}
+
+  {{ kpi_card('确认跌倒', falls.value if falls.value is defined else none,
+         ('较昨日 +' ~ fall_delta) if fall_delta is not none and fall_delta > 0 else
+         ('较昨日 ' ~ fall_delta) if fall_delta is not none else '较昨日 —') }}
+
+  {% if far.value is defined and far.value is not none and far_den is not none and far_den >= 5 %}
+    {{ kpi_card('误报率', '%.1f'|format(far.value * 100) ~ '%',
+           (far_num|string ~ '/' ~ far_den|string ~ ' 已闭环')) }}
+  {% else %}
+    {{ kpi_card('误报率', none, '样本不足（分母<5）') }}
+  {% endif %}
+
+  {# 全站统一叫「待处置」，指未闭环三态。别在这一页改叫「未处置」——同一个数两个名字，
+     护士长和护士对不上话。 #}
+  {{ kpi_card('待处置', unhandled.value if unhandled.value is defined else none,
+         '需处置' if unhandled.value is defined and unhandled.value else '当前无待处置') }}
+
+  {% if median.value is defined and median.value is not none and median_n is not none and median_n >= 5 %}
+    {{ kpi_card('中位响应', duration_text(median.value), 'n=' ~ median_n, '', '', true) }}
+  {% else %}
+    {{ kpi_card('中位响应', none, '样本不足（n<5）') }}
+  {% endif %}
+</div>
+
+{# ---------- 24 小时告警分布 ----------
+   2026-11-04：从页面最底部提到队列之前。护士长先看「今天什么时候忙」，
+   再决定要不要催人；顺序反过来时，看完队列往往就不往下滚了。 #}
+<section class="fg-panel fg-col-12" data-refresh-region="hourly-chart">
+  <div class="fg-panel__head">
+    <h2 class="fg-panel__title">24 小时告警分布</h2>
+    <span class="fg-panel__sub">按接收时间统计 · 单位：条</span>
+  </div>
+  <div class="fg-panel__body">
+    {% if hours %}
+      {% set ns = namespace(max_count=0) %}
+      {% for item in hours %}
+        {% if item.count is defined and item.count > ns.max_count %}{% set ns.max_count = item.count %}{% endif %}
+      {% endfor %}
+      <div class="fg-bars" role="img" aria-label="24 小时告警分布柱状图">
+        {#- 只留下面那一条轴。每根柱子再挂一个 00/04/08 的刻度，等于同一根轴上
+            写两套标签，两套还对不齐（柱子均分 24 格，轴是 5 段 flex）。 -#}
+        {% for item in hours %}
+        <div class="fg-bars__col" title="{{ '%02d'|format(item.hour) }}:00 · {{ item.count }} 条">
+          <div class="fg-bars__bar" data-count="{{ item.count }}"
+               style="height: {{ '%.1f'|format((item.count / ns.max_count * 100) if ns.max_count else 0) }}%"></div>
+        </div>
+        {% endfor %}
+      </div>
+      <div class="fg-bars__axis">
+        <span>00:00</span><span>06:00</span><span>12:00</span><span>18:00</span><span>24:00</span>
+      </div>
+    {% else %}
+      {{ empty_state('本期无数据', '', '', '', 'activity') }}
+    {% endif %}
+  </div>
+</section>
+
+{# ---------- 待处置队列 ---------- #}
+<section id="overview-queue" class="fg-panel fg-col-8" data-refresh-region="pending-followup">
+  <div class="fg-panel__head">
+    <h2 class="fg-panel__title">待处置队列</h2>
+    <div class="fg-panel__actions">
+      {#- 队列是 LIMIT 5 的前 5 条，KPI 是全量。只写「5 条」会和同屏 KPI 的 30 打架，
+          护士长会以为积压只有 5 条。工作台早就改成「显示 X / 共 Y」了。 -#}
+      <span class="fg-small fg-muted">
+        显示 {{ queue|length }} / 共 {{ unhandled.value if unhandled.value is defined and unhandled.value is not none else '—' }} 条
+      </span>
+      {#- test=0：面板列的是生产数据（测试数据不计入），「查看全部」必须同口径，
+          否则点进去的集合比面板多出测试数据。
+          2026-11-04：从面板脚搬进头里 —— 一屏化后脚会随面板一起被压掉/滚走，
+          头是固定件，永远看得见。 -#}
+      <a class="fg-btn fg-btn--ghost fg-btn--sm"
+         href="/head/events?disposition=PENDING,ACKED,ON_SCENE&test=0">查看全部 →</a>
+    </div>
+  </div>
+  {% if queue %}
+  <div class="fg-queue">
+    {% for event in queue %}
+    <a class="fg-queue__item" href="/head/events/{{ event.event_uid }}">
+      {# 与工作台队列同一口径：日期常驻。按「等得久」排的列表没有日期就会被读成乱序 #}
+      <span class="fg-queue__time">
+        <span class="fg-queue__d">{{ fmt_time(event.received_at, '%m-%d') }}</span>
+        {{ fmt_time(event.received_at, '%H:%M') }}
+      </span>
+      {#- 4 栏面板只有 ~230px 放这行内容。原来四个元素平铺，挤到最后一个就折行，
+          折出来是「S1 紧急 / A-03 / 待接警」三行参差。这里分成「级别+点位」和
+          「处置态+等待」两组，组内不许断，放不下就整组换行并靠右。 -#}
+      <span class="fg-queue__main">
+        <span class="fg-queue__lead">
+          {{ sev_tag(event.severity) }}
+          <span class="fg-queue__loc">{{ event.location or '—' }}</span>
+        </span>
+        <span class="fg-queue__tail">
+          {{ disposition_tag(event.disposition_state) }}
+          <span class="fg-queue__wait" data-wait-since="{{ iso(event.received_at) }}">--:--</span>
+        </span>
+      </span>
+    </a>
+    {% endfor %}
+  </div>
+  {% else %}
+    {{ empty_state('当前无待处置', '', '', '', 'check') }}
+  {% endif %}
+</section>
+
+{# ---------- 近期处置人 ---------- #}
+<section id="overview-handlers" class="fg-panel fg-col-4" data-refresh-region="recent-handlers">
+  <div class="fg-panel__head">
+    <h2 class="fg-panel__title">近期处置人</h2>
+    <span class="fg-panel__sub">按已闭环事件数</span>
+  </div>
+  {% if handlers %}
+  <div class="fg-handlers">
+    {% for handler in handlers %}
+    <div class="fg-handler">
+      <span class="fg-avatar" aria-hidden="true">{{ (handler.display_name or '护')[:1] }}</span>
+      <span class="fg-handler__name">{{ handler.display_name or '—' }}</span>
+      <span class="fg-handler__count">{{ handler.count }} 条</span>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+    {{ empty_state('本期无处置记录', '', '', '', 'users') }}
+  {% endif %}
+</section>
+
+{# ---------- 底部工具行 ----------
+   2026-11-04 用户：「把导出按钮放到下面」。导出从页头搬到这里；
+   「今日撤回」也从图上跟着下来 —— 两者都是「读完这一页才需要的一句/一件」。
+   放同一行：左边解释告警数怎么读，右边是把这一页带走。 -#}
+<footer class="fg-overview-foot" data-refresh-region="overview-foot">
+  {% if retracted_today is defined and retracted_today is not none %}
+  <p class="fg-small fg-muted">
+    今日撤回 {{ retracted_today }} 条：确认后被判定为非跌倒，仍计入告警数，不计入误报率。
+  </p>
+  {% endif %}
+  {% set month_from = as_of.strftime('%Y-%m-01') if as_of is defined and as_of else '' %}
+  {% set month_to = as_of.strftime('%Y-%m-%d') if as_of is defined and as_of else '' %}
+  <a class="fg-btn fg-btn--primary fg-btn--sm"
+     href="/api/v1/export/events.csv?from={{ month_from }}&amp;to={{ month_to }}">
+    {{ icon('download', 16) }}导出本月 CSV
+  </a>
+</footer>
+{% endblock %}

@@ -1,0 +1,65 @@
+# Pose frontend: YOLO26n-pose (COCO-17) keypoint extraction.
+# Model facts must be verified at run time; do not copy constants into code.
+
+model:
+  name: yolo26n-pose
+  path: weights/yolo26n-pose.pt
+  # The SHA256 and source of the checkpoint actually loaded are recorded in
+  # datasets/keypoints/v2/extraction_index.csv at run time.
+  keypoints: 17
+  keypoint_names:
+    - nose
+    - left_eye
+    - right_eye
+    - left_ear
+    - right_ear
+    - left_shoulder
+    - right_shoulder
+    - left_elbow
+    - right_elbow
+    - left_wrist
+    - right_wrist
+    - left_hip
+    - right_hip
+    - left_knee
+    - right_knee
+    - left_ankle
+    - right_ankle
+
+inference:
+  imgsz: 640
+  # Measured 2026-10-19: 1280 helps a few MCFD lying frames but loses more
+  # standing frames (chute01 label-1 interval: 640 = 20/31, 1280 = 4/31;
+  # chute10..14: 640 >= 1280). Keep 640 for all datasets.
+  conf: 0.25
+  iou: 0.7
+  device: "0"
+  quantize: 16            # FP16 on CUDA; null = FP32. `half` is deprecated in ultralytics 8.4.
+  batch_frames: 16
+  max_persons: 4          # top-N detections by box confidence, per frame
+  person_class: 0
+
+tracking:
+  # Greedy IoU association; deterministic and independent of ultralytics tracker.
+  iou_threshold: 0.30
+  max_age: 30             # frames a track survives without a match
+
+output:
+  root: datasets/keypoints/v2
+  index: datasets/keypoints/v2/extraction_index.csv
+  overwrite: false
+  # keypoints are stored in the processed frame's pixel coordinates.
+  # URFD right half is cropped; crop_offset_x records the source x offset.
+  urfd_half: right
+
+qc:
+  # Whole-video coverage is informational only: these videos contain periods
+  # with nobody in frame. Acceptance uses coverage inside annotated intervals.
+  interval_coverage_flag: 0.70    # per-video review flag, annotated interval
+  interval_coverage_median_min: 0.85
+  coverage_selected_flag: 0.50    # selected track on fall-labeled videos
+  score_median_min: 0.50
+  score_video_flag: 0.30
+  low_score_threshold: 0.20
+  visuals_per_dataset: 8
+  visuals_per_video: 4

@@ -1,0 +1,10 @@
+{
+  "shm_name": "/fallguard_shm",
+  "http_port": 8080,
+  "sensitivity": "medium",
+  "push_threshold": 0.60,
+  "push_cooldown_ms": 3000,
+  "push_enabled": true,
+  "push_url": "",
+  "data_dir": "/mnt/sdcard/fallguard_data"
+}

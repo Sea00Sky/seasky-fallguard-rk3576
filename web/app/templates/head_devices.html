@@ -1,0 +1,469 @@
+{# ==========================================================================
+   设备（2026-11-01 设备管理 P0；2026-11-05 六改拆出点位页；七改「点位选设备」）
+   上下文：devices[]（含设备自身档案 / live_point_* / 心跳）、zones[]、pending_by_device{}
+
+   边界（改之前先读）：
+   - 一台设备 = 一路摄像头 = 一行 fg.device；多摄像头 = 多台板子多行。
+   - **设备只登记自己**：设备码、型号、摄像头、推哪条流、心跳。
+     装在哪 / 归哪个区域 = **绑定了它的点位**（point.device_id）——
+     七改删掉了 device.point_id/zone_id/location 三列，别再在这页加位置字段。
+   - 事件入库时位置已快照（event.location_text）⇒ 改绑定不影响历史。
+   - 灵敏度不在这页：P1 才做下发；这里不画改不动的开关。
+   - ingest key 明文只在新建响应里出现一次，用弹窗强制展示。
+   ========================================================================== #}
+{% extends "base.html" %}
+{% from "_macros.html" import icon, fmt_time, fmt_iso_time, iso, model_ver, doorlight, empty_state %}
+
+{#- 同一份模板服务两个入口：护士长只读 / 信息科管理员可编辑。
+    `base` 决定表单回跳与链接前缀；`admin_mode` 控制编辑入口和病区选择。 -#}
+{% set admin_mode = admin_mode if admin_mode is defined and admin_mode else false %}
+{% set base = '/admin/devices' if admin_mode else '/head/devices' %}
+{% set ward_list = wards if wards is defined and wards else [] %}
+{% set ward_names = {} %}
+{% for _w in ward_list %}{% set _ = ward_names.update({_w.ward_id: _w.ward_name}) %}{% endfor %}
+
+{% block title %}设备 · 衡护 HENGUARD{% endblock %}
+{% block page_key %}head-devices{% endblock %}
+{#- V2 主题**按入口分**（2026-11-05 第92轮）：信息科（/admin/devices）搬进 V2，
+    护士长的 /head/devices 仍留 V1 —— 护士长其余页面都没搬，单给这一页搬，
+    她的侧栏里就会出现两种外观。判据即 admin_mode（护士长入口不传这个变量）。 -#}
+{% block html_theme %}{{ 'v2' if admin_mode is defined and admin_mode else 'light' }}{% endblock %}
+{% block theme_color %}{{ '#F4F6F4' if admin_mode is defined and admin_mode else '#EDF1EE' }}{% endblock %}
+{% block page_title %}<span class="fg-sr-only">{{ '设备台账' if admin_mode is defined and admin_mode else '设备' }}</span>{% endblock %}
+{% block page_head_class %} fg-page-head--slim{% endblock %}
+{#- 十七改（2026-11-06，用户「设备页面对着点位页面的改动去改」）：页头对齐点位页 ——
+    ① 两段副标题整块删（管理员版讲档案清单、护士长版讲灯，都是系统规则）；
+    ② 大标题搬进 sr-only + 瘦页头（h1 仍在 DOM，读屏与导航高亮不受影响）；
+    ③ 动作按钮全部下移到面板头右上角 —— 这里原来挂的 `{% block actions %}` 留空，
+       `fg-page-actions:empty` 会整条不渲染。 -#}
+
+{% block content %}
+{% set device_list = devices if devices is defined and devices else [] %}
+{% set zone_list = zones if zones is defined and zones else [] %}
+{% set pbd = pending_by_device if pending_by_device is defined and pending_by_device else {} %}
+{#- 2026-11-05 二改（用户拍板「方案 A」）：设备页 = **登记簿**。
+    登记（新增/编辑档案）与启停对所有设备一视同仁；判定策略是场景参数，在点位详情里。
+    这里不再按「有没有绑定点位」把设备劈成两组不同权限 —— 那条规则用户在页面上看不见。 -#}
+{% set unbound = device_list | rejectattr('live_point_id') | list %}
+{#- 十七改：与点位页同一条规矩 —— 病区层只给管理员。护士长只有一个病区，
+    给她加个大标题是废话；她那页区域仍是 h3，从 h2 到 h3 不断层。 -#}
+{% set ward_layer = admin_mode %}
+{#- 病区 → 区域 的桶由 `app/grouping.device_ward_groups()` 分好（纯函数，工装直接 import）。
+    护士长那一路不传 ⇒ 这里退成空表，模板只走区域分组。 -#}
+{% set device_groups = device_groups if device_groups is defined and device_groups else [] %}
+{% set edit_id = request.query_params.get('edit') %}
+{% set show_new = request.query_params.get('new') == '1' %}
+
+{#- Jinja 的 set 在 for 体内不逃逸，必须用 namespace -#}
+{% set ns = namespace(edit=none, active=0, pending=0, zones_used={}) %}
+{% for device in device_list %}
+  {% if edit_id and device.device_id == edit_id %}{% set ns.edit = device %}{% endif %}
+  {% if device.is_active %}{% set ns.active = ns.active + 1 %}{% endif %}
+  {% set ns.pending = ns.pending + (pbd.get(device.device_code, 0) or 0) %}
+{% endfor %}
+
+{% set mount_labels = {'ceiling': '吊顶', 'wall': '壁装', 'pole': '立杆', 'bedside': '床边', 'other': '其他'} %}
+{% set zone_labels = {'corridor': '走廊', 'ward_room': '病房', 'bathroom': '卫生间',
+                      'dayroom': '活动室', 'stairwell': '楼梯间',
+                      'nurse_station': '护士站', 'other': '其他'} %}
+
+<section class="fg-panel fg-col-12" data-refresh-region="devices-main">
+  <div class="fg-panel__head">
+    <h2 class="fg-panel__title">{{ '设备台账' if admin_mode is defined and admin_mode else '设备' }}</h2>
+    <div class="fg-panel__actions">
+      {% if admin_mode %}
+      <a class="fg-btn fg-btn--primary fg-btn--sm" href="{{ base }}?new=1"
+         data-detail-open="{{ base }}?new=1">{{ icon('plus', 16) }}新增设备</a>
+      <a class="fg-btn fg-btn--secondary fg-btn--sm" href="/admin/points">{{ icon('map-pin', 16) }}点位与画面</a>
+      {% endif %}
+      <a class="fg-btn fg-btn--secondary fg-btn--sm" href="{{ base }}" data-refresh>{{ icon('refresh', 16) }}刷新</a>
+    </div>
+  </div>
+  <div class="fg-panel__body">
+    {% if device_list %}
+    {#- 十七改：筛选栏（纯前端，与点位页同一套）。本页同样**没有 `data-refresh-every`**
+        ⇒ 筛完不会被自动刷新冲掉；「刷新」是整页跳转，条件本就该重置。
+       每个控件都带 `autocomplete="off"`：浏览器表单状态恢复发生在内联脚本之后，
+       少了它，下拉被回填而卡片 hidden 还是旧状态（点位页已踩过）。 -#}
+    <div class="fg-filters fg-filters--panel" role="search">
+      <div class="fg-field">
+        <label class="fg-label" for="df-q">搜索</label>
+        <input class="fg-input" type="search" id="df-q" autocomplete="off"
+               placeholder="设备码 / 设备名 / 点位名" data-device-filter="q">
+      </div>
+      {#- 病区下拉只给管理员：护士长只有一个病区，一个只有一项的下拉是噪音。 -#}
+      {% if ward_layer and ward_list|length > 1 %}
+      <div class="fg-field">
+        <label class="fg-label" for="df-ward">病区</label>
+        <select class="fg-select" id="df-ward" autocomplete="off" data-device-filter="ward">
+          <option value="">全部</option>
+          {% for w in ward_list %}<option value="{{ w.ward_id }}">{{ w.ward_name }}</option>{% endfor %}
+        </select>
+      </div>
+      {% endif %}
+      {% if zone_list %}
+      <div class="fg-field">
+        <label class="fg-label" for="df-zone">区域</label>
+        <select class="fg-select" id="df-zone" autocomplete="off" data-device-filter="zone">
+          <option value="">全部</option>
+          {% if ward_layer %}
+            {% for w in ward_list %}
+              {% set wz = zone_list | selectattr('ward_id', 'equalto', w.ward_id) | list %}
+              {% if wz %}
+          <optgroup label="{{ w.ward_name }}" data-ward="{{ w.ward_id }}">
+            {% for z in wz %}<option value="{{ z.zone_id }}">{{ z.name }}</option>{% endfor %}
+          </optgroup>
+              {% endif %}
+            {% endfor %}
+          {% else %}
+            {% for z in zone_list %}<option value="{{ z.zone_id }}">{{ z.name }}</option>{% endfor %}
+          {% endif %}
+        </select>
+      </div>
+      {% endif %}
+      <div class="fg-field">
+        <label class="fg-label" for="df-bound">绑定</label>
+        <select class="fg-select" id="df-bound" autocomplete="off" data-device-filter="bound">
+          <option value="">全部</option>
+          <option value="1">已绑点位</option>
+          <option value="0">未绑定</option>
+        </select>
+      </div>
+      <div class="fg-field">
+        <label class="fg-label" for="df-state">状态</label>
+        <select class="fg-select" id="df-state" autocomplete="off" data-device-filter="state">
+          <option value="">全部</option>
+          <option value="online">在线</option>
+          <option value="offline">离线</option>
+          <option value="disabled">已停用</option>
+        </select>
+      </div>
+      <div class="fg-filters__tail">
+        <span class="fg-filter__count">
+          <b data-device-shown>{{ device_list|length }}</b> / {{ device_list|length }} 台设备
+        </span>
+        <button type="button" class="fg-btn fg-btn--ghost fg-btn--sm"
+                data-device-reset hidden>清除筛选</button>
+      </div>
+    </div>
+
+    <div class="fg-freshbar">
+      <span class="fg-freshbar__item">
+        <span class="fg-freshbar__k">设备</span>
+        <span class="fg-freshbar__v">{{ device_list|length }} 台 · {{ ns.active }} 台启用</span>
+      </span>
+      <span class="fg-freshbar__item">
+        <span class="fg-freshbar__k">区域</span>
+        <span class="fg-freshbar__v">{{ zone_list|length }} 个</span>
+      </span>
+      {% if admin_mode %}
+      <span class="fg-freshbar__item">
+        <span class="fg-freshbar__k">未绑定点位</span>
+        <span class="fg-freshbar__v {% if unbound %}is-danger{% endif %}">{{ unbound|length }} 台</span>
+      </span>
+      {% endif %}
+      {#- 待处置条数是临床数据：管理员页不查、也不显示（显示固定 0 会被当成"没有告警"） -#}
+      {% if not admin_mode %}
+      <span class="fg-freshbar__item">
+        <span class="fg-freshbar__k">待处置</span>
+        <span class="fg-freshbar__v {% if ns.pending %}is-danger{% endif %}">{{ ns.pending }} 条</span>
+      </span>
+      {% endif %}
+      {#- 二十改（2026-11-07 用户「不要反复提云端和板端，正常一点」）：原来这里有一格
+          「数据来源：板端推送 · 云端只落库」—— 那是**实现**，不是台账页要看的事，整格删。 -#}
+    </div>
+
+    {#- 未绑定设备单独一组：它们**没有病区**（病区来自绑定的点位），所以排在病区层之前。
+        管理员的编辑/启停入口在本页（已绑定的去点位详情）；护士长也照常看见它们
+        （只是没有按钮）—— 别让设备从她视野里消失。
+        ⚠️ `data-zone=""`：区域筛选一生效它就自动被排除，不需要另加分支。 -#}
+    {% if unbound %}
+    <div class="fg-zone-group" data-zone="">
+      <div class="fg-zone-group__head">
+        <h3 class="fg-zone-group__name">未绑定设备</h3>
+        <span class="fg-zone-group__meta">
+          {{ unbound|length }} 台 ·
+          {%- if admin_mode %} 可在本页编辑与启停；绑定后到点位详情配策略
+          {%- else %} 还没有绑定到点位{% endif %}
+        </span>
+      </div>
+      <div class="fg-devcard-grid">
+        {% for device in unbound %}
+          {% set card_actions = true %}
+          {% include "_device_card.html" %}
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+    {#- 十七改：**病区 → 区域 → 卡片** 三层（管理员）。病区取自绑定了这台设备的点位
+        （`live_ward_id`）—— 七改后设备行上没有位置副本；`d.ward_id` 是**登记病区**，
+        与「装在哪」是两件事，这一层要用后者。分桶在 `app/grouping.device_ward_groups()`。
+        护士长只有一个病区 ⇒ 不画病区层，区域仍是 h3（与点位页同一条规矩）。 -#}
+    {% if ward_layer %}
+      {% for wg in device_groups %}
+        {% if wg.device_total %}
+        <section class="fg-ward-group fg-ward-group--titled"
+                 data-ward-group data-ward="{{ wg.ward_id }}">
+          <div class="fg-ward-group__head">
+            <h3 class="fg-ward-group__title">{{ wg.ward_name }}</h3>
+            <span class="fg-ward-group__code" translate="no">{{ wg.ward_id }}</span>
+            {% if wg.floor %}<span class="fg-ward-group__meta">{{ wg.floor }}</span>{% endif %}
+            <span class="fg-ward-group__meta">{{ wg.device_total }} 台设备</span>
+          </div>
+          {% for zg in wg.zone_groups %}
+          <div class="fg-zone-group" data-zone="{{ zg.zone.zone_id }}">
+            <div class="fg-zone-group__head">
+              <h4 class="fg-zone-group__name">{{ zg.zone.name }}</h4>
+              <span class="fg-zone-group__meta">
+                {{ zone_labels.get(zg.zone.zone_type, zg.zone.zone_type) }} · {{ zg.devices|length }} 台
+                {%- if not zg.zone.is_active %} · 已停用{% endif %}
+              </span>
+            </div>
+            <div class="fg-devcard-grid">
+              {% for device in zg.devices %}{% include "_device_card.html" %}{% endfor %}
+            </div>
+          </div>
+          {% endfor %}
+          {#- 兜底段：区域不在这个病区里的设备（点位改过病区 / 区域被挪走）。
+              没有它，这些设备在页面上会凭空消失 —— 见 grouping.device_ward_groups 注释。 -#}
+          {% if wg.loose_devices %}
+          <div class="fg-zone-group" data-zone="">
+            <div class="fg-zone-group__head">
+              <h4 class="fg-zone-group__name">未分组</h4>
+              <span class="fg-zone-group__meta">{{ wg.loose_devices|length }} 台 · 建议归到某个区域</span>
+            </div>
+            <div class="fg-devcard-grid">
+              {% for device in wg.loose_devices %}{% include "_device_card.html" %}{% endfor %}
+            </div>
+          </div>
+          {% endif %}
+        </section>
+        {% endif %}
+      {% endfor %}
+    {% else %}
+      {#- 护士长：只有区域一层（h3）。待处置条数是临床数据，只给她看。 -#}
+      {% for zone in zone_list %}
+        {% set members = device_list | selectattr('zone_id', 'equalto', zone.zone_id)
+                            | selectattr('live_point_id') | list %}
+        {% if members %}
+        {% set zns = namespace(pending=0) %}
+        {% for d in members %}{% set zns.pending = zns.pending + (pbd.get(d.device_code, 0) or 0) %}{% endfor %}
+        <div class="fg-zone-group" data-zone="{{ zone.zone_id }}">
+          <div class="fg-zone-group__head">
+            <h3 class="fg-zone-group__name">{{ zone.name }}</h3>
+            <span class="fg-zone-group__meta">
+              {{ zone_labels.get(zone.zone_type, zone.zone_type) }} · {{ members|length }} 台
+              {%- if zns.pending %} · 待处置 {{ zns.pending }} 条{% endif %}
+              {%- if not zone.is_active %} · 已停用{% endif %}
+            </span>
+          </div>
+          <div class="fg-devcard-grid">
+            {% for device in members %}{% include "_device_card.html" %}{% endfor %}
+          </div>
+        </div>
+        {% endif %}
+      {% endfor %}
+
+      {% set ungrouped = device_list | rejectattr('zone_id') | selectattr('live_point_id') | list %}
+      {% if ungrouped %}
+      <div class="fg-zone-group" data-zone="">
+        <div class="fg-zone-group__head">
+          <h3 class="fg-zone-group__name">未分组</h3>
+          <span class="fg-zone-group__meta">{{ ungrouped|length }} 台 · 建议归到某个区域</span>
+        </div>
+        <div class="fg-devcard-grid">
+          {% for device in ungrouped %}{% include "_device_card.html" %}{% endfor %}
+        </div>
+      </div>
+      {% endif %}
+    {% endif %}
+
+    <p class="fg-empty-inline" data-device-empty hidden>没有符合筛选条件的设备。</p>
+    {% else %}
+      {{ empty_state('尚未登记设备',
+         '一台设备 = 一路摄像头。新增后会生成一次性接入密钥，填到设备的 cloud.env 即可。',
+         '新增设备', base ~ '?new=1', 'device') }}
+    {% endif %}
+
+    {#- 二十改（2026-11-07 用户「不要反复提云端和板端，正常一点」）。
+        原来这一段在讲实现（「云端不能主动连板子：策略由板端反向长轮询拉取」）——
+        用户在这页只需要知道**去哪儿改**；而且「下发到板端」那个按钮就在那个页面上，
+        这里重复一遍机制只会让人以为这页也能下发。收成一句指路，并从黄警告降为普通提示
+        （没有任何风险需要警告）。 -#}
+    <p class="fg-hint fg-mt-4">
+      {%- if admin_mode is defined and admin_mode -%}
+        判定策略、绑定与解绑设备，都在「<a href="/admin/points">点位与画面</a>」的点位详情里。
+      {%- else -%}
+        本页只读；判定参数由信息科维护。
+      {%- endif -%}
+    </p>
+  </div>
+</section>
+
+{#- ── 设备新增/编辑抽屉（2026-11-05 三改，用户「做成侧页抽屉，别放下面了」）──
+   表单原先挂在设备列表**下方**：卡越多，越要往下滚，改一台机器很费劲。
+   现在与点位页同一套：点「新增设备」/卡片「编辑」→ 右侧抽屉。
+   ⚠️ 根**必须常渲染**（没选中时 hidden）：app.js 的 loadDetail 找不到壳就退回整页跳转。
+       `?new=1` / `?edit=<id>` 直开时服务端就渲染成展开态，无 JS 也能用。
+   护士长入口（/head/devices）不渲染这个壳 —— 她本来就没有编辑按钮。 -#}
+{% if admin_mode %}
+{% set f = ns.edit %}
+{% set form_back = base %}
+<div class="fg-drawer-root" id="fg-drawer-root" {% if not (show_new or f) %}hidden{% endif %}>
+  <div class="fg-drawer-overlay" data-drawer-close></div>
+  <aside class="fg-drawer fg-drawer--wide" role="dialog" aria-modal="true"
+         aria-label="{{ '编辑设备' if f else '新增设备' }}" tabindex="-1">
+    <div class="fg-drawer__body">
+      {% if show_new or f %}{% include "_device_form.html" %}{% endif %}
+    </div>
+  </aside>
+</div>
+<noscript>
+  <style>
+    .fg-drawer-root { position: static; }
+    .fg-drawer-overlay { display: none; }
+    .fg-drawer { position: static; width: auto; max-width: none; box-shadow: none; border-left: 0; }
+    .fg-drawer__body { overflow: visible; }
+  </style>
+</noscript>
+{% endif %}
+
+{#- 一次性接入密钥：新建成功后由 app.js 填充并打开 -#}
+<div class="fg-modal-root" id="fg-ingest-modal" hidden>
+  <div class="fg-modal-overlay" data-modal-close></div>
+  <div class="fg-modal" role="dialog" aria-modal="true" aria-labelledby="fg-ingest-title">
+    <div class="fg-modal__head">
+      <h2 class="fg-modal__title" id="fg-ingest-title">设备接入密钥</h2>
+      <button type="button" class="fg-drawer__close" data-modal-close aria-label="关闭">{{ icon('x', 20) }}</button>
+    </div>
+    <div class="fg-modal__body">
+      <p class="fg-modal__text">
+        设备 <strong data-ingest-code>—</strong> 的接入密钥如下。<strong>只显示这一次</strong>，
+        关掉后无法再查看；丢失只能新建设备。
+      </p>
+      <code class="fg-ingestkey" data-ingest-key>—</code>
+      <p class="fg-hint">填到设备上 <code>/etc/fallguard/cloud.env</code> 的 ingest key 字段。</p>
+    </div>
+    <div class="fg-modal__foot">
+      <button type="button" class="fg-btn fg-btn--primary"
+              data-modal-close
+              onclick="window.location.assign('{{ base }}')">我已保存，返回列表</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{#- 十七改：设备页筛选 —— 与点位页（`head_points.html`）同一套，只换锚点前缀。
+    逐字对齐的理由：两张页面的筛选行为必须一模一样，用户在两页之间切换时
+    不该有「这个能清那个不能清」的差别；将来修 bug 也是照着一处改两处。 -#}
+{% block scripts %}
+<script>
+(function () {
+  var bar = document.querySelector('.fg-filters--panel');
+  if (!bar) return;                      // 没有设备（empty_state）时整段不干活
+
+  var q     = bar.querySelector('[data-device-filter="q"]');
+  var bound = bar.querySelector('[data-device-filter="bound"]');
+  var state = bar.querySelector('[data-device-filter="state"]');
+  // 病区下拉只有管理员页有 ⇒ 这两个引用必须 null-safe，
+  // 不能像上面三个那样直接用（护士长那页 ward 是 null，一碰 .value 整段脚本就死）。
+  var ward  = bar.querySelector('[data-device-filter="ward"]');
+  var zone  = bar.querySelector('[data-device-filter="zone"]');
+  var shown = document.querySelector('[data-device-shown]');
+  var reset = document.querySelector('[data-device-reset]');
+  var empty = document.querySelector('[data-device-empty]');
+  var cards = [].slice.call(document.querySelectorAll('.fg-devcard'));
+  // 每张卡属于哪个病区/区域，**初始化时算一次**（渲染完层级不会再变）。
+  var meta = cards.map(function (c) {
+    var zg = c.closest('.fg-zone-group');
+    var wg = c.closest('.fg-ward-group');
+    return {w: wg ? wg.getAttribute('data-ward') : '',
+            z: zg ? zg.getAttribute('data-zone') : ''};
+  });
+  // 区域下拉跟病区**单向联动**：把服务端渲染好的分组认下来，之后只**移进移出**节点，
+  // 不在 JS 里重建选项（区域清单始终只有服务端那一份）。
+  // ⚠️ 不用 `optgroup[hidden]`：hidden 对 option/optgroup 在部分浏览器不生效。
+  // ⚠️⚠️ 注释里**不许出现带尖括号的标签名** —— 页内脚本同样在 HTML 里，
+  //    「护士长页不该有分组」这类断言裸搜整页会搜到注释，变成假 FAIL。
+  var zoneGroups = zone ? [].slice.call(zone.querySelectorAll('optgroup')) : [];
+
+  function syncZoneOptions() {
+    if (!zoneGroups.length) return;            // 护士长页无组可动
+    var w = ward ? ward.value : '';
+    var keep = zone.value;
+    zoneGroups.forEach(function (g) {          // 全摘下来（节点仍被 zoneGroups 引用着）
+      if (g.parentNode) g.parentNode.removeChild(g);
+    });
+    zoneGroups.forEach(function (g) {          // 按服务端原顺序把该病区的放回去
+      if (!w || g.getAttribute('data-ward') === w) zone.appendChild(g);
+    });
+    // 选中项落在被移走的组里 ⇒ 回落到「全部」，否则 select.value 指向不存在的 option，
+    // 人看着像「没选」，其实还在拿它筛。
+    var stillThere = [].slice.call(zone.options).some(function (o) {
+      return o.value === keep;
+    });
+    zone.value = stillThere ? keep : '';
+  }
+
+  var groups = [].slice.call(
+    document.querySelectorAll('.fg-ward-group, .fg-zone-group'));
+
+  function apply() {
+    var kw = (q.value || '').trim().toLowerCase();
+    var b = bound.value, st = state.value;
+    var w = ward ? ward.value : '', z = zone ? zone.value : '';
+    var active = !!(kw || b || st || w || z);
+    var n = 0;
+
+    cards.forEach(function (c, i) {
+      var hit = true;
+      // 两边都 toLowerCase：data-search 保留原始大小写（K7C-4FC-03 印在 DOM 里要能读）
+      if (kw && c.getAttribute('data-search').toLowerCase().indexOf(kw) < 0) hit = false;
+      if (hit && b  && c.getAttribute('data-bound') !== b)  hit = false;
+      if (hit && st && c.getAttribute('data-state') !== st) hit = false;
+      // `data-zone=""`（未绑定设备 / 未分组段）永远不等于具体区域 ⇒ 自动被排除
+      if (hit && w && meta[i].w !== w) hit = false;
+      if (hit && z && meta[i].z !== z) hit = false;
+      c.hidden = !hit;
+      if (hit) n++;
+    });
+
+    // 整组筛空就收起分组标题（含「未分组」段和整个病区块）
+    // ⚠️ 必须先判 `active`：空病区块里一张卡都没有，少了它首屏那次 apply()
+    //    会把「还没有区域」的引导块也 hidden 掉。
+    groups.forEach(function (g) {
+      g.hidden = active && g.querySelectorAll('.fg-devcard:not([hidden])').length === 0;
+    });
+
+    if (shown) shown.textContent = n;
+    if (empty) empty.hidden = n > 0;
+    if (reset) reset.hidden = !active;
+  }
+
+  var controls = [q, bound, state];
+  if (zone) controls.push(zone);          // 区域自己变不需要联动，重筛就行
+  controls.forEach(function (el) {        // 护士长页 ward 是 null，不进这个表
+    el.addEventListener('input', apply);
+    el.addEventListener('change', apply);
+  });
+  // 病区**单独绑**：它一变必须先同步区域下拉、再重筛 —— 顺序不能反，
+  // `apply()` 读的是同步之后的 `zone.value`。
+  if (ward) {
+    ward.addEventListener('change', function () { syncZoneOptions(); apply(); });
+  }
+
+  if (reset) reset.addEventListener('click', function () {
+    q.value = ''; bound.value = ''; state.value = '';
+    if (ward) ward.value = '';
+    syncZoneOptions();                    // 病区回「全部」后，区域那些组要放回来
+    if (zone) zone.value = '';
+    apply();
+    q.focus();
+  });
+
+  syncZoneOptions();                      // 首次进来（含浏览器恢复了下拉值）先对齐一次
+  apply();                                // 首次进来（含浏览器缓存了搜索框内容）也对一次
+})();
+</script>
+{% endblock %}

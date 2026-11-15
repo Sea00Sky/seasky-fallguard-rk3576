@@ -1,0 +1,134 @@
+{# ==========================================================================
+   点位画面页 /nurse/camera/{point_id} · 护士长入口 /head/camera
+   --------------------------------------------------------------------------
+   整页就是该点位摄像头的大画面（进入即自动播放），页头右上角一个「该点位告警」按钮。
+
+   为什么是独立页而不是抽屉：抽屉最宽 640px，16:9 只有 600×337，
+   跟工作台右栏的小窗（318×179）比没大多少，等于白做一个入口。
+
+   2026-11-03 用户：「下方该点位告警点详情会跳到告警中心，不太合适，要不就不这个部分，
+   只用上方的该点位告警按钮」——**整块表格删掉**。
+   原因值得记：那张表每行只有一个「详情」，点下去是**离开点位页去告警中心看单条事件**，
+   等于把「当前在看哪个点位」这个上下文丢了；而页头按钮去的是**已按本点位筛好**的告警中心，
+   目的地一样但保留上下文。同一个去处不该给两个入口，弱的那条直接去掉。
+
+   2026-11-04：护士长侧栏加了「病区画面」，复用本模板（不另建页面、不复制播放器）。
+   为此模板接受四个可选上下文，缺省值 = 护士站原行为（逐字不变）：
+     camera_back_url    返回按钮去哪，默认 '/nurse/today'
+     camera_back_label  返回按钮文案，默认 '返回工作台'
+     camera_alerts_base 「该点位告警」去哪个告警列表，默认 '/alerts'
+     camera_autoplay    false ⇒ 只探状态不自动建流（护士长整天开着总览，省出网带宽）
+   另外 point 为空（本病区没有任何配了摄像头的点位）时走空态，不渲染播放器。
+
+   上下文：point（含 stream_path；可能为空）
+   （`point_events` 已于同日停传；`main._point_events` 保留未删，见那里的说明）
+   配套：{% include %} 不需要 —— 播放逻辑是独立的 /static/camera-live.js
+   ========================================================================== #}
+{% extends "base.html" %}
+{#- 只留 icon：告警表删掉后 sev_tag / detection_tag / disposition_tag / fmt_time 都不用了。
+    留着未使用的 import 会让下一个改这页的人以为还有别处在用。 -#}
+{% from "_macros.html" import icon, empty_state %}
+
+{% block title %}{{ point.name if point else '病区画面' }} · 实时画面 · 衡护 HENGUARD{% endblock %}
+{% block page_key %}nurse-camera{% endblock %}
+{% block page_title %}{{ point.name if point else '病区画面' }}{% endblock %}
+{% block html_theme %}v2{% endblock %}
+{% block theme_color %}#F4F6F4{% endblock %}
+
+{% block page_subtitle %}
+{%- if point -%}
+{{ point.zone_name or point.light_key }}{% if user.role != 'head_nurse' and point.device_code %} · {{ point.device_name or point.device_code }}{% endif %}{% if not point.is_active %} · <span class="is-warn">该点位已停用</span>{% endif %}
+{%- endif -%}
+{% endblock %}
+
+{% block actions %}
+<a class="fg-btn fg-btn--secondary"
+   href="{{ camera_back_url if camera_back_url is defined and camera_back_url else '/nurse/today' }}">
+  {{ icon('arrow-left', 18) }}{{ camera_back_label if camera_back_label is defined and camera_back_label else '返回工作台' }}
+</a>
+{% if point %}
+{#- 原来的「按设备看告警」下钻不能因为换了入口就消失，这里给它一个位置。
+    2026-11-03 起按**点位**筛（light_key），不再按 device_code：
+    没挂设备的点位也有历史事件，按设备筛会直接把它们筛没。
+    显式带空的 from/to = 不限时间——点位历史不是「只看今天」。
+    护士长去事件台账（/head/events），护士去告警中心（/alerts）。 -#}
+<a class="fg-btn fg-btn--secondary"
+   href="{{ camera_alerts_base if camera_alerts_base is defined and camera_alerts_base else '/alerts' }}?point={{ point.light_key|urlencode }}&from=&to=">该点位告警</a>
+{% endif %}
+{% endblock %}
+
+{% block content %}
+{% if point %}
+{# ---------- 实时画面 ----------
+   data-camera-stream 为空 = 这个点位还没配置摄像头。
+   这种情况下前端**不发起任何 WHEP/HLS 请求**，直接显示「未配置摄像头」——
+   否则一个没接摄像头的点位会去建会话、失败、再触发回落，白等好几秒。 #}
+<section class="fg-panel fg-col-12 fg-camera fg-camera--full"
+         id="camera-panel"
+         data-camera-root
+         data-camera-stream="{{ point.stream_path or '' }}"
+         data-camera-name="{{ point.name }}"
+         data-camera-autoplay="{{ '1' if (camera_autoplay is not defined or camera_autoplay) else '0' }}">
+  <div class="fg-panel__head">
+    <h2 class="fg-panel__title">实时画面</h2>
+    <span class="fg-camera__state" data-camera-state>正在检测…</span>
+    <div class="fg-panel__actions">
+      <button type="button" class="fg-btn fg-btn--secondary fg-btn--sm"
+              data-camera-toggle aria-pressed="false" aria-controls="camera-stage">播放</button>
+    </div>
+  </div>
+  <div class="fg-panel__body">
+    {#- data-live-root 供 _live_overlay_js.html 使用：它按 contain 的内容矩形算 canvas 位置，
+        所以 canvas 必须和 video 同父（stage 是 position:relative）。 -#}
+    <div class="fg-camera__stage" data-live-root>
+      <video class="fg-camera__video" id="camera-stage" data-camera-video data-live-video
+             playsinline muted controls preload="none" hidden></video>
+      {# 骨架 + 置信框叠加层：板端只发坐标，浏览器画（板端零渲染） #}
+      <canvas class="fg-camera__canvas" data-live-canvas></canvas>
+      {# 播放中角标：画面时刻是「画面上那一帧」的云端时间，不是墙上时间 #}
+      <div class="fg-live__live" data-live-live hidden>
+        <span class="fg-live__pulse" aria-hidden="true"></span>
+        <span class="fg-live__tk" data-live-timecode>--:--:--</span>
+      </div>
+      <div class="fg-camera__ph" data-camera-ph>
+        <span class="fg-camera__badge" data-camera-badge>正在检测画面…</span>
+        <p class="fg-camera__hint" data-camera-hint></p>
+      </div>
+    </div>
+    {#- 叠加开关：原先在工作台小窗里，小窗撤掉后跟着画面搬过来。
+        `_live_overlay_js.html` 用 document.querySelector 找它（它是 stage 的兄弟节点）。 -#}
+    <div class="fg-live__overlay-bar" data-live-overlay-bar hidden>
+      <label class="fg-live__opt"><input type="checkbox" data-overlay-flag="skel" checked> 骨架</label>
+      <label class="fg-live__opt"><input type="checkbox" data-overlay-flag="box" checked> 框</label>
+      <label class="fg-live__opt"><input type="checkbox" data-overlay-flag="label" checked> 编号 / 分数</label>
+      <span class="fg-live__opt fg-live__opt--lat">
+        对齐微调
+        <input type="range" data-overlay-latency min="-300" max="300" step="50" value="0">
+      </span>
+    </div>
+  </div>
+</section>
+{% else %}
+{#- 本病区一个配了摄像头的点位都没有。不渲染播放器：那会是一个点了必然失败的按钮。 -#}
+<section class="fg-panel fg-col-12">
+  <div class="fg-panel__head">
+    <h2 class="fg-panel__title">实时画面</h2>
+  </div>
+  <div class="fg-panel__body">
+    {{ empty_state('本病区尚未配置摄像头',
+                   '请联系信息科在「设备与点位」里给点位填写画面路径，这里就会出现实时画面。',
+                   '', '', 'camera') }}
+  </div>
+</section>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{% if point %}
+<script src="{{ asset('camera-live.js') }}"></script>
+{#- 骨架叠加：从工作台小窗搬过来的同一份脚本（P9 ADR-11）。
+    它自己找 [data-live-root] / [data-live-canvas]，拿不到就 return，
+    所以不依赖工作台那边的 DOM。 -#}
+{% include "_live_overlay_js.html" %}
+{% endif %}
+{% endblock %}

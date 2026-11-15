@@ -1,0 +1,17 @@
+[Unit]
+Description=MediaMTX (SRT in / RTSP out) — FallGuard cloud egress
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/mediamtx /etc/mediamtx/mediamtx.yml
+# 云侧可以 always：配置写错时 systemd 会一直重启并刷日志，
+# 反而比「静默停住」更容易发现（板上那个 unit 的取舍不同，见其注释）。
+Restart=always
+RestartSec=2
+# SRT/UDP + 多观看端：默认 1024 个 fd 不够
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

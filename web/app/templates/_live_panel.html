@@ -1,0 +1,80 @@
+{# ==========================================================================
+   ⚠️ 2026-11-04 起**已无消费者**（原唯一使用方是护士长总览）。画面搬去
+   /head/camera 后与护士站共用 camera-live.js。本文件保留仅作旧单路实现的对照；
+   要恢复「首页内嵌画面」再拿它，新页面别用（它没有状态探测、没有按点位绑定）。
+
+   实时画面 · 卡片部分（可复用）
+   用法：{% include "_live_panel.html" %}
+   可选上下文：live_location —— 标题右侧显示的点位名
+   配套：{% include "_live_panel_js.html" %} 必须放在 {% block scripts %} 里
+   设计：mediamtx hlsAlwaysRemux=false ⇒ 没人看就不产分片；点「播放」才建连接。
+   ========================================================================== #}
+{# live_col：栅格占位。整页通栏传 'fg-col-12'；放进 .fg-split 里传 ''（那是 2 列 grid，
+   再套 span 8 会撑出隐式列）。 #}
+{% set _col = live_col if live_col is defined and live_col is not none else 'fg-col-12' %}
+{% set _loc = live_location if live_location is defined and live_location else '病区摄像头' %}
+{#- live_variant='hero' = 本页主角形态：去掉卡片边框、画面顶到边。
+    工作台用 hero；护士长总览保持默认（那里画面是辅助，不是主角）。 -#}
+{% set _variant = live_variant if live_variant is defined and live_variant else '' %}
+{#- 多摄像头「视觉预留」（2026-11-01 拍板）。
+    当前后端只有 mediamtx 单个 path `live`，所以默认就是单路，下面的切换条整条不渲染。
+    将来接第二路时只需传入 live_streams=[{id,label}]，本文件结构不用改。 -#}
+{% set _streams = live_streams if live_streams is defined and live_streams else [{'id': 'live', 'label': _loc}] %}
+<section class="fg-panel {{ _col }}{% if _variant %} fg-live-panel--{{ _variant }}{% endif %}" id="live-panel">
+  <div class="fg-panel__head">
+    <h2 class="fg-panel__title">实时画面</h2>
+    {#- 小窗形态（工作台右栏）不渲染副标题：288px 宽塞不下，且「点播放才建立连接」
+        说的是按钮本身在做的事。hero 形态仍保留 —— 那里标题栏是空的，需要这句话兜底。 -#}
+    {% if _variant != 'compact' %}
+    <span class="fg-panel__sub" data-live-sub>{{ _loc }} · 点「播放」才建立连接</span>
+    {% endif %}
+    <div class="fg-panel__actions">
+      <button type="button" class="fg-btn fg-btn--secondary fg-btn--sm"
+              data-live-toggle aria-pressed="false" aria-controls="live-stage">播放</button>
+    </div>
+  </div>
+  <div class="fg-panel__body">
+    <div class="fg-live" data-live-root>
+      <video class="fg-live__video" id="live-stage" data-live-video
+             playsinline muted controls preload="none" hidden></video>
+      {# 骨架叠加层（P9 ADR-11 / P4b）：板端只发坐标，画在这里 #}
+      <canvas class="fg-live__canvas" data-live-canvas></canvas>
+      {# 播放中的实时角标：呼吸点 + 画面时刻（不是墙上时间，是画面上那一帧的云端时刻）。
+         两个都不是装饰——「在播吗」「落后多少」是值班时最常问的两件事。 #}
+      <div class="fg-live__live" data-live-live hidden>
+        <span class="fg-live__pulse" aria-hidden="true"></span>
+        <span class="fg-live__tk" data-live-timecode>--:--:--</span>
+      </div>
+      <div class="fg-live__ph" data-live-ph>
+        <span class="fg-live__badge">画面未连接</span>
+        {#- V2：去掉 720p / 2.5 Mbps / 4.8 Mbps 这些码率说明。
+            留下唯一会改变护士行为的约束：同时只能一个人看。 -#}
+        <p class="fg-live__hint">同一时间建议只 1 人在看。</p>
+      </div>
+      <div class="fg-live__state" data-live-state hidden></div>
+    </div>
+    {%- if _streams|length > 1 %}
+    {#- 多路切换条：N>1 才存在。N=1 时这块连 DOM 都不生成，不留空位。 -#}
+    <div class="fg-live-nav" role="tablist" aria-label="摄像头">
+      {%- for s in _streams %}
+      <button type="button" role="tab" class="fg-live-nav__item {% if loop.first %}is-active{% endif %}"
+              data-live-stream="{{ s.id }}"
+              aria-selected="{{ 'true' if loop.first else 'false' }}">{{ s.label }}</button>
+      {%- endfor %}
+    </div>
+    {%- endif %}
+    <div class="fg-live__overlay-bar" data-live-overlay-bar hidden>
+      <label class="fg-live__opt"><input type="checkbox" data-overlay-flag="skel" checked> 骨架</label>
+      <label class="fg-live__opt"><input type="checkbox" data-overlay-flag="box" checked> 框</label>
+      <label class="fg-live__opt"><input type="checkbox" data-overlay-flag="label" checked> 编号 / 分数</label>
+      {#- 对齐微调是调试用的，小窗里不渲染（_live_overlay_js.html 对
+          querySelector 结果有判空，缺这个控件不会报错）。 -#}
+      {% if _variant != 'compact' %}
+      <span class="fg-live__opt fg-live__opt--lat">
+        对齐微调
+        <input type="range" data-overlay-latency min="-300" max="300" step="50" value="0">
+      </span>
+      {% endif %}
+    </div>
+  </div>
+</section>

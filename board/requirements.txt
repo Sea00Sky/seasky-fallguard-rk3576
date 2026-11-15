@@ -1,0 +1,18 @@
+# RK3576 板端测试 — Python 依赖
+#
+# 安装：
+#   pip install -r requirements.txt
+#
+# 注意：不需要 torch / ultralytics / onnxruntime。
+# 板端只跑 RKNN 推理，那两个包是 PC 侧导出模型才用的。
+# 装它们只会拖慢启动、占 SD 卡空间。
+
+numpy>=1.24.0
+opencv-python>=4.8.0
+
+# rknnlite 不在这里，从瑞芯微 SDK 单独装：
+#   安装脚本见 ../deploy/install_rknnlite_v2.sh
+#
+# 装完必须核对版本：
+#   strings /usr/lib/librknnrt.so | grep -i "librknnrt version"
+# 模型由 rknn-toolkit2 2.3.0 生成，runtime 需要 2.3.x

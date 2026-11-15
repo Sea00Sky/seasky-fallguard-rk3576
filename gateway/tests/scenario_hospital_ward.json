@@ -1,0 +1,23 @@
+{
+  "meta": {
+    "name": "hospital_ward",
+    "desc": "企业级病房真实流：ADL 占主导 + 稀疏跌倒；分数梯度覆盖三档阈值（low 0.75 / medium 0.60 / high 0.45），供三档报警次数对比 low<medium<high"
+  },
+  "sensitivity": "medium",
+  "interval_ms": 1000,
+  "snapshot": true,
+  "live": true,
+  "events": [
+    { "t_ms": 0,     "person_id": 1, "class_id": 0, "class": "walk",  "confidence": 0.78, "bbox": [60, 80, 200, 220],  "hybrid_score": 0.10, "reason": "adl", "snapshot": false },
+    { "t_ms": 8000,  "person_id": 2, "class_id": 1, "class": "sit",   "confidence": 0.82, "bbox": [30, 60, 160, 240],  "hybrid_score": 0.32, "reason": "adl", "snapshot": false },
+    { "t_ms": 16000, "person_id": 1, "class_id": 5, "class": "fall",  "confidence": 0.91, "bbox": [90, 150, 230, 220], "hybrid_score": 0.88, "reason": "dual_confirm", "snapshot": true },
+    { "t_ms": 25000, "person_id": 3, "class_id": 2, "class": "squat", "confidence": 0.74, "bbox": [120, 90, 200, 210], "hybrid_score": 0.26, "reason": "adl", "snapshot": false },
+    { "t_ms": 33000, "person_id": 1, "class_id": 3, "class": "bend",  "confidence": 0.76, "bbox": [70, 100, 180, 230], "hybrid_score": 0.22, "reason": "adl", "snapshot": false },
+    { "t_ms": 42000, "person_id": 2, "class_id": 5, "class": "fall",  "confidence": 0.87, "bbox": [40, 160, 210, 225], "hybrid_score": 0.63, "reason": "ml_temporal_confirm", "snapshot": true },
+    { "t_ms": 52000, "person_id": 3, "class_id": 0, "class": "walk",  "confidence": 0.80, "bbox": [150, 70, 260, 215], "hybrid_score": 0.12, "reason": "adl", "snapshot": false },
+    { "t_ms": 62000, "person_id": 1, "class_id": 4, "class": "lie",   "confidence": 0.85, "bbox": [80, 160, 250, 235], "hybrid_score": 0.52, "reason": "geo_confirm", "snapshot": true },
+    { "t_ms": 73000, "person_id": 2, "class_id": 1, "class": "sit",   "confidence": 0.81, "bbox": [25, 55, 150, 245],  "hybrid_score": 0.30, "reason": "adl", "snapshot": false },
+    { "t_ms": 84000, "person_id": 3, "class_id": 5, "class": "fall",  "confidence": 0.88, "bbox": [110, 155, 240, 225], "hybrid_score": 0.47, "reason": "ml_rescue", "snapshot": true },
+    { "t_ms": 96000, "person_id": 1, "class_id": 0, "class": "walk",  "confidence": 0.79, "bbox": [55, 75, 190, 218],  "hybrid_score": 0.11, "reason": "adl", "snapshot": false }
+  ]
+}

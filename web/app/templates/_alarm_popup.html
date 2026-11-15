@@ -1,0 +1,55 @@
+{# ==========================================================================
+   衡护 HENGUARD · 跌倒告警弹窗（P9 ②）
+   由 app.js 在收到 SSE `event.created` 时填充并显示；页面在后台时改发系统通知。
+   默认 hidden —— 不做 JS 的页面上永远不出现，不会挡住任何静态内容。
+   样式见 app.css 末尾「跌倒告警弹窗」一节。
+   ========================================================================== #}
+{% from "_macros.html" import icon %}
+<div class="fg-alarmpop" id="fg-alarmpop" hidden data-sev="S1"
+     role="alertdialog" aria-modal="true"
+     aria-labelledby="fg-alarmpop-title" aria-describedby="fg-alarmpop-sub">
+  <div class="fg-alarmpop__overlay" data-alarmpop-dismiss></div>
+
+  <div class="fg-alarmpop__card" tabindex="-1">
+    <header class="fg-alarmpop__head">
+      <span class="fg-alarmpop__pulse" aria-hidden="true">{{ icon('bell', 22) }}</span>
+      <div class="fg-alarmpop__headmain">
+        <h2 class="fg-alarmpop__title" id="fg-alarmpop-title">检测到跌倒</h2>
+        <p class="fg-alarmpop__sub" id="fg-alarmpop-sub">请尽快确认现场情况</p>
+      </div>
+      <span class="fg-tag fg-tag--s1" id="fg-alarmpop-sev">S1</span>
+      <button type="button" class="fg-alarmpop__close" data-alarmpop-dismiss aria-label="关闭告警提示">
+        {{ icon('x', 18) }}
+      </button>
+    </header>
+
+    <div class="fg-alarmpop__body">
+      <div class="fg-alarmpop__media">
+        <img class="fg-alarmpop__img" id="fg-alarmpop-img" alt="跌倒事件现场快照" hidden>
+        <div class="fg-alarmpop__ph" id="fg-alarmpop-ph">
+          <span class="fg-alarmpop__spinner" aria-hidden="true"></span>
+          <span id="fg-alarmpop-phtext">快照上传中…</span>
+        </div>
+      </div>
+
+      <dl class="fg-alarmpop__meta">
+        <div class="fg-alarmpop__row"><dt>点位</dt><dd id="fg-alarmpop-loc">—</dd></div>
+        <div class="fg-alarmpop__row"><dt>时间</dt><dd id="fg-alarmpop-time">—</dd></div>
+        {#- 模型原始分不再显示。这个弹窗只发给护士（base.html 按角色 include），
+            而护士站屏幕朝走廊：分数既不能指导处置，也不该上公开屏幕。
+            app.js 的 alarmSetText 会自行判空，删掉这一行不会报错。 -#}
+        <div class="fg-alarmpop__row"><dt>人员</dt><dd id="fg-alarmpop-person">—</dd></div>
+      </dl>
+    </div>
+
+    {#- 原来这里有一条「开启浏览器通知」提示条（开启 / 不用 两个按钮）。
+        2026-11-05 整条删除：Notification API 只在安全上下文可用，本站 http 明文
+        ⇒ 浏览器强制 denied，开了也没用。页内弹窗本身不依赖它。 -#}
+
+    <footer class="fg-alarmpop__foot">
+      <span class="fg-alarmpop__queue" id="fg-alarmpop-queue" hidden></span>
+      <button type="button" class="fg-btn fg-btn--secondary" data-alarmpop-dismiss>知道了</button>
+      <a class="fg-btn fg-btn--primary" id="fg-alarmpop-go" href="/alerts">去处置</a>
+    </footer>
+  </div>
+</div>

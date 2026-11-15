@@ -1,0 +1,181 @@
+{# ==========================================================================
+   处置记录 /nurse/history（只读）
+   上下文：events[]、total、page、size、filters{severity,from,to,q}、summary{n,closed,median_s}
+
+   2026-11-03 方案 A：用户问「历史事件和告警中心的功能有些重叠了」。
+   ★ 它们其实**不重叠**，区别只有一个参数：这页传了 `assignee_id=user.user_id`
+     （main.py 的路由里），也就是说**只列我处置过的事件**，而且是全时段、只读；
+     告警中心是**全病区**、默认只看今天、能操作。
+   ★ 问题是这个区别**页面上一个字都没写** —— 两页都叫「事件」，表格只多一列「处置人」，
+     看起来当然像同一个页面。所以这次不改功能，只把口径说到脸上：
+     标题改成「处置记录」，面板头写死范围，顶部补三个数（共几条 / 已闭环 / 中位响应）。
+
+   ⚠️ 不要把这里改成「全病区」：那才真的和告警中心重复了。
+     全病区的台账入口是护士长的 /head/events。
+   ========================================================================== #}
+{% extends "base.html" %}
+{% from "_macros.html" import sev_tag, detection_tag, disposition_tag, fmt_time, empty_state, pager, duration_text %}
+
+{% block title %}处置记录 · 衡护 HENGUARD{% endblock %}
+{% block page_key %}nurse-history{% endblock %}
+{#- 2026-11-03 用户：「把告警中心和历史事件页面的大字标题和刷新按钮删掉」，
+    随后追加「历史事件的返回工作台页按钮也去掉」。
+    与 /alerts 完全同一处理：标题 sr-only，页头瘦条，动作条整条不画。
+    回工作台靠左导航（桌面）/ 底部 Tab（手机）——页头不放重复入口。 -#}
+{% block page_title %}<span class="fg-sr-only">处置记录</span>{% endblock %}
+{% block page_head_class %} fg-page-head--slim{% endblock %}
+{% block page_subtitle %}{% endblock %}
+{#- V2：本页已迁移到浅色 V2 主题 -#}
+{% block html_theme %}v2{% endblock %}
+{% block theme_color %}#F4F6F4{% endblock %}
+
+{% set event_list = events if events is defined and events else [] %}
+{% set f = filters if filters is defined and filters else {} %}
+{% set cur_severity = f.severity if f.severity is defined and f.severity else '' %}
+{% set cur_from = f.from if f.from is defined and f.from else '' %}
+{% set cur_to = f.to if f.to is defined and f.to else '' %}
+{% set cur_q = f.q if f.q is defined and f.q else '' %}
+{% set page_no = page if page is defined and page else 1 %}
+{% set page_size = size if size is defined and size else 20 %}
+{% set total_count = total if total is defined and total is not none else event_list|length %}
+{#- 顶部三个数：口径与列表逐条相等（服务端复用同一份 where/params 算的）。
+    拿不到就给空，不编数字 —— 统计挂了也不该让台账白屏。 -#}
+{% set sm = summary if summary is defined and summary else {} %}
+{% set sm_n = sm.n if sm.n is defined and sm.n is not none else total_count %}
+{% set sm_closed = sm.closed if sm.closed is defined and sm.closed is not none else none %}
+{% set sm_median = sm.median_s if sm.median_s is defined and sm.median_s is not none else none %}
+
+{% block actions %}{% endblock %}
+
+{% block content %}
+<div class="fg-col-12" data-refresh-region="history-main">
+  <form class="fg-filters" method="get" action="/nurse/history" role="search">
+    <div class="fg-field">
+      <label class="fg-label" for="history-severity">级别</label>
+      <select class="fg-select" id="history-severity" name="severity">
+        <option value="">全部</option>
+        <option value="S1" {% if cur_severity == 'S1' %}selected{% endif %}>S1 紧急</option>
+        <option value="S2" {% if cur_severity == 'S2' %}selected{% endif %}>S2 重要</option>
+        <option value="S3" {% if cur_severity == 'S3' %}selected{% endif %}>S3 提示</option>
+      </select>
+    </div>
+    <div class="fg-field">
+      <label class="fg-label" for="history-from">起始日期</label>
+      <input class="fg-input" type="date" id="history-from" name="from" value="{{ cur_from }}"
+             autocomplete="off">
+    </div>
+    <div class="fg-field">
+      <label class="fg-label" for="history-to">截止日期</label>
+      <input class="fg-input" type="date" id="history-to" name="to" value="{{ cur_to }}"
+             autocomplete="off">
+    </div>
+    <div class="fg-field fg-field--grow">
+      <label class="fg-label" for="history-q">搜索</label>
+      {#- 与 /alerts 同一个框：搜十六进制事件号，关掉拼写检查与自动填充 -#}
+      <input class="fg-input" type="search" id="history-q" name="q" value="{{ cur_q }}"
+             placeholder="如 7c1f4a92 或 4F-B 东走廊…"
+             autocomplete="off" spellcheck="false">
+    </div>
+    <div class="fg-field">
+      <span class="fg-label" aria-hidden="true">&nbsp;</span>
+      <div class="fg-btn-group">
+        <button type="submit" class="fg-btn fg-btn--primary">筛选</button>
+        <a class="fg-btn fg-btn--ghost" href="/nurse/history">清除筛选</a>
+      </div>
+    </div>
+  </form>
+
+  {#- V2：表格规格与 /alerts 完全一致 —— 面板 + 面板头计数 + 齐平表体 + 面板脚分页。
+      这两页是同一件事（筛选 → 表格 → 分页），容器不该长得不一样。 -#}
+  <section class="fg-panel fg-mt-4">
+    <div class="fg-panel__head">
+      <h2 class="fg-panel__title">处置记录</h2>
+      {#- 2026-11-11 删掉这里原来的一行「只显示我处置过的事件 · 不限时间」（用户要求）。
+          原注释称它是「这页存在的理由」—— 删掉后本页与告警中心**没有页面级差异**了，
+          剩下的区别只在数据层面：告警中心 = 全病区 / 默认今天 / 可操作，
+          本页 = 只管「我」/ 全时段 / 只读。若日后有人反馈「这页跟告警中心分不清」，
+          先想到是这一次删的，别去别处找。 -#}
+      <div class="fg-panel__actions">
+        <span class="fg-small fg-muted">共 {{ sm_n }} 条{% if sm_closed is not none %} · 已闭环 {{ sm_closed }}{% endif %}{% if sm_median is not none %} · 中位响应 {{ duration_text(sm_median) }}{% endif %}</span>
+      </div>
+    </div>
+    <div class="fg-panel__body fg-panel__body--flush">
+      <div class="fg-table-wrap">
+        <table class="fg-table">
+          <thead>
+            <tr>
+              <th scope="col">时间</th>
+              <th scope="col">级别</th>
+              <th scope="col">点位</th>
+              <th scope="col">检测态</th>
+              <th scope="col">处置态</th>
+              {#- 这里原来放「处置人」，可这一页的 SQL 已经按 assignee 过滤，
+                  每一行都必然是当前用户 —— 那一列永远不会变。
+                  换成「用时」（接警 − 收到），和顶部的中位响应正好对得上。 -#}
+              <th scope="col">用时</th>
+              <th scope="col">操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for event in event_list %}
+            <tr class="{% if event.detection_state == 'RETRACTED' and not event.ever_confirmed %}is-retracted{% endif %}"
+                data-detail-url="/alerts/{{ event.event_uid }}" tabindex="0">
+              <td class="fg-mono fg-nowrap">{{ fmt_time(event.received_at) }}</td>
+              <td class="fg-nowrap">{{ sev_tag(event.severity) }}</td>
+              <td class="fg-nowrap">{{ event.location or '—' }}</td>
+              <td class="fg-nowrap">{{ detection_tag(event.detection_state, event.ever_confirmed) }}</td>
+              <td class="fg-nowrap">{{ disposition_tag(event.disposition_state) }}</td>
+              <td class="fg-nowrap">{{ duration_text(event.response_s) if event.response_s is defined and event.response_s is not none else '—' }}</td>
+              <td class="fg-nowrap">
+                {#- 2026-11-03 用户：「把历史事件打开跳转到告警中心的情况修改一下」。
+                    带 data-detail-open：有 JS 时原地开抽屉（地址不动），无 JS 时仍是普通链接。 -#}
+                <a class="fg-btn fg-btn--ghost fg-btn--sm"
+                   href="/alerts/{{ event.event_uid }}"
+                   data-detail-open="/alerts/{{ event.event_uid }}">查看</a>
+              </td>
+            </tr>
+            {% else %}
+            <tr class="fg-table__empty">
+              <td colspan="7">
+                {#- P12 决策 2（2026-11-04 补做）：零区域 ≠ 没参与过。见 alerts.html 同处注释。 -#}
+                {% if no_zone %}
+                  {{ empty_state('你还没有负责的区域', '请联系本病区护士长为你分配区域。分配后，你处置过的事件会记在这里。', '', '', 'lock') }}
+                {% elif user.role == 'head_nurse' %}
+                  {#- 护士长的这一页**结构性地永远是空的**：SQL 按 `assignee_id = 我` 过滤，
+                      而状态机只让 role='nurse' 接警/到场/处置（REOPEN 才轮到护士长）。
+                      原来的「你还没有参与过该范围内的事件」会让人以为数据丢了。
+                      2026-11-04 演示数据上线时发现：护士长一点这页就是空白。 -#}
+                  {{ empty_state('护士长不参与一线处置',
+                                 '这页只列「我本人处置过」的事件。看全病区的处置情况请去事件台账。',
+                                 '去事件台账', '/head/events', 'history') }}
+                {% else %}
+                  {{ empty_state('当前筛选下没有历史事件', '', '清除筛选', '/nurse/history', 'history') }}
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="fg-panel__foot">
+      {{ pager(request, page_no, page_size, total_count, '条事件') }}
+    </div>
+  </section>
+</div>
+
+{# ---------- 详情抽屉（复用告警中心那一套） ----------
+   2026-11-03 用户：「打开历史事件会跳转到告警中心，改一下」。
+   点行 / 点「查看」都就地开抽屉，看完关掉还在这页、筛选和分页都还在。
+
+   ⚠️ `data-drawer-no-push`：抽屉内容仍是从 /alerts/{uid} 取来的（同一份 event_detail），
+   但**不许**把地址改成 /alerts/xxx——那不是这一页的地址，刷新就把用户带走了。
+   没有这个属性时，告警中心那边照旧同步地址（从那里能直接分享单条事件）。 #}
+<div class="fg-drawer-root" id="fg-drawer-root" hidden data-drawer-no-push>
+  <div class="fg-drawer-overlay" data-drawer-close></div>
+  <aside class="fg-drawer" role="dialog" aria-modal="true" aria-label="事件详情" tabindex="-1">
+    <div class="fg-drawer__body"></div>
+  </aside>
+</div>
+{% endblock %}

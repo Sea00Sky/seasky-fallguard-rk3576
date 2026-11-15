@@ -1,0 +1,223 @@
+{# ==========================================================================
+   账号抽屉（/admin/accounts?u=<user_id>）
+
+   由 admin_accounts.html include 进 `.fg-drawer__body`；app.js 的 `loadDetail()`
+   会**整块替换** `.fg-drawer__body`，所以这里不许再套一层 `.fg-drawer__body`。
+   上下文：card_user（账号一行 + zone_ids/zone_names/ward_name/created_by_name/locked）、
+           wards[]（改病区下拉）、user（当前登录者，用来判「这是不是我自己」）
+
+   2026-11-07 与页面一起重排：这一页从「两块上下堆叠面板」改成
+   「单表 + 这个抽屉」，用户痛点「操作太绕」的解法就在这里 ——
+   改角色 / 改病区是**本轮新补的后端能力**（此前只能停用旧号再建一个），
+   分配负责区域此前在管理员页**根本没有入口**（P12 文档自己记着这个缺口）。
+
+   ⚠️ 刻意**不含任何工作量数字**（用户拍板）：没有今日接警 / 手上未闭环 / 中位响应，
+      那套统计留在 /head/staff，避免两处口径各说各话。
+   ⚠️ 动作按钮必须写**裸 `data-api-action`** —— app.js 的点击委托认的是它，
+      只写 data-api-url 的按钮点了没有任何反应（2026-11-04 在本页踩过）。
+   ⚠️ 编辑身份用 `data-success-url` 回到 `?u=<id>`：成功后原地重开抽屉，
+      能立刻看见改完的样子；**不要**改成整页刷新，那会把抽屉关掉。
+   ========================================================================== #}
+{% from "_macros.html" import icon, fmt_time, fmt_datetime, no_zone_text %}
+{% set a = card_user %}
+{% set ward_list = wards if wards is defined and wards else [] %}
+{% set is_self = (user is defined and user and a.user_id == user.user_id) %}
+{% set _open = '全院' if a.role == 'admin' else '全病区' %}
+<div class="fg-pcard">
+  {# ---------- 身份行 ---------- #}
+  <div class="fg-pcard__head">
+    <div class="fg-pcard__avatar" aria-hidden="true">{{ (a.display_name or '?')[:1] }}</div>
+    <div class="fg-pcard__id">
+      <div class="fg-pcard__name">{{ a.display_name or '—' }}</div>
+      <div class="fg-pcard__tags">
+        <span class="fg-muted fg-small">
+          {{ role_label(a.role) }} · {{ a.ward_name or '全院' }}
+        </span>
+        {%- if not a.is_active %}
+        <span class="fg-tag fg-tag--closed"><span class="fg-tag__mark"></span>已停用</span>
+        {%- elif a.locked %}
+        <span class="fg-tag fg-tag--pending" title="密码连续输错被临时锁定"><span class="fg-tag__mark"></span>已锁定</span>
+        {%- elif not a.last_login_at %}
+        <span class="fg-tag fg-tag--test" title="账号建好了但一次都没登录过"><span class="fg-tag__mark"></span>从未登录</span>
+        {%- elif a.must_change_password %}
+        <span class="fg-tag fg-tag--test" title="首登后必须改密，这一步还没完成"><span class="fg-tag__mark"></span>待改密</span>
+        {%- endif %}
+      </div>
+    </div>
+    <button type="button" class="fg-drawer__close" data-drawer-close aria-label="关闭账号">
+      {{ icon('x', 20) }}
+    </button>
+  </div>
+
+  {# ---------- 身份（本轮新能力：改姓名 / 角色 / 病区）---------- #}
+  <div class="fg-detail__section">
+    <div class="fg-detail__title">身份</div>
+    <form data-api-form data-acc-edit-form
+          data-api-endpoint="/api/v1/admin/users/{{ a.user_id }}" data-api-method="PATCH"
+          data-success-url="/admin/accounts?u={{ a.user_id }}" data-success-text="已保存">
+      <div class="fg-formgrid">
+        <div class="fg-field">
+          <label class="fg-label" for="ed-name">姓名<span class="fg-label__req" aria-hidden="true"></span></label>
+          <input class="fg-input" id="ed-name" name="display_name" maxlength="32" required
+                 autocomplete="off" value="{{ a.display_name or '' }}">
+        </div>
+        {% if is_self %}
+        {#- 后端对「改自己的角色/病区」是 400 CANNOT_CHANGE_SELF。这里连输入框都不给，
+            免得填完才被拒 —— 和「不能停用自己」是同一个理由：改错了没人能把你改回来。 -#}
+        <div class="fg-field">
+          <span class="fg-label">角色 / 病区</span>
+          <p class="fg-hint">{{ role_label(a.role) }} · {{ a.ward_name or '全院' }}。当前登录的就是这个账号，不能改自己的角色或病区。</p>
+        </div>
+        {% else %}
+        <div class="fg-field">
+          <label class="fg-label" for="ed-role">角色<span class="fg-label__req" aria-hidden="true"></span></label>
+          <select class="fg-select" id="ed-role" name="role" required autocomplete="off" data-role-select>
+            <option value="nurse" {% if a.role == 'nurse' %}selected{% endif %}>值班护士</option>
+            <option value="head_nurse" {% if a.role == 'head_nurse' %}selected{% endif %}>护士长</option>
+            <option value="admin" {% if a.role == 'admin' %}selected{% endif %}>信息科管理员</option>
+          </select>
+        </div>
+        <div class="fg-field">
+          <label class="fg-label" for="ed-ward">病区</label>
+          <select class="fg-select" id="ed-ward" name="ward_id" autocomplete="off" data-ward-select>
+            {#- ⚠️ 同上：下拉宽度只有 ~194px，占位文案长了会被截断。规则由下面那行 hint 说。 -#}
+            <option value="">（不选病区）</option>
+            {% for w in ward_list %}
+            <option value="{{ w.ward_id }}" {% if a.ward_id == w.ward_id %}selected{% endif %}>{{ w.ward_name }}</option>
+            {% endfor %}
+          </select>
+          <p class="fg-hint">
+            换病区会一并撤掉负责区域（区域必须与账号同病区）；改成非护士角色也会撤掉。
+          </p>
+        </div>
+        {% endif %}
+      </div>
+      <div class="fg-error-text fg-mt-3" data-form-error aria-live="polite" hidden></div>
+      <div class="fg-mt-3">
+        <button type="submit" class="fg-btn fg-btn--primary fg-btn--sm">保存身份</button>
+      </div>
+    </form>
+    {% if not is_self %}
+    {#- 角色 → 病区联动，作用域锁在这张表单里（新建表单有同名 data-* 标记）。
+        ⚠️ 这段脚本随抽屉 body 一起被 `loadDetail()` 的 `execScripts()` 执行 ——
+           必须留在这个 partial 内，挪到页级脚本里在抽屉场景下不会生效。 -#}
+    <script>
+    (function () {
+      var form = document.querySelector('[data-acc-edit-form]');
+      if (!form) return;
+      var role = form.querySelector('[data-role-select]');
+      var ward = form.querySelector('[data-ward-select]');
+      if (!role || !ward) return;
+      function sync() {
+        var isAdmin = role.value === 'admin';
+        ward.disabled = isAdmin;
+        if (isAdmin) ward.value = '';
+      }
+      role.addEventListener('change', sync);
+      sync();
+    })();
+    </script>
+    {% endif %}
+  </div>
+
+  {# ---------- 负责区域（P12）---------- #}
+  <div class="fg-detail__section">
+    <div class="fg-detail__title">负责区域</div>
+    {% if a.role != 'nurse' %}
+    <p class="fg-pcard__note">
+      {{ role_label(a.role) }}看{{ _open }}，数据范围不受区域限制，不需要分配区域。
+    </p>
+    {% elif a.zone_names %}
+    <div class="fg-zone-chips">
+      {% for z in a.zone_names %}<span class="fg-zone-chip">{{ z }}</span>{% endfor %}
+    </div>
+    {% else %}
+    <p class="fg-pcard__note">
+      <span class="fg-tag fg-tag--pending"><span class="fg-tag__mark"></span>未分配</span>
+      {{ no_zone_text() }}。
+    </p>
+    {% endif %}
+    {% if a.role == 'nurse' %}
+    <div class="fg-mt-3">
+      <button type="button" class="fg-btn fg-btn--secondary fg-btn--sm"
+              data-zone-open="{{ a.user_id }}"
+              data-zone-ward="{{ a.ward_id or '' }}"
+              data-zone-user="{{ a.display_name or a.login_name }}"
+              data-zone-ids="{{ a.zone_ids | join(',') }}">分配区域</button>
+    </div>
+    {% endif %}
+  </div>
+
+  {# ---------- 账号信息 ---------- #}
+  <div class="fg-detail__section">
+    <div class="fg-detail__title">账号信息</div>
+    <div class="fg-detail__grid">
+      <div>
+        <span class="fg-detail__k">登录名</span>
+        <span class="fg-detail__v fg-mono" translate="no">{{ a.login_name }}</span>
+      </div>
+      <div>
+        <span class="fg-detail__k">最后登录</span>
+        <span class="fg-detail__v">{{ fmt_datetime(a.last_login_at) }}</span>
+      </div>
+      <div>
+        <span class="fg-detail__k">创建时间</span>
+        <span class="fg-detail__v">{{ fmt_datetime(a.created_at) }}</span>
+      </div>
+      <div>
+        <span class="fg-detail__k">创建人</span>
+        <span class="fg-detail__v">{{ a.created_by_name or '—' }}</span>
+      </div>
+      <div>
+        <span class="fg-detail__k">密码状态</span>
+        <span class="fg-detail__v">
+          {%- if a.must_change_password -%}首登未改密{%- else -%}已设置{%- endif -%}
+        </span>
+      </div>
+      {#- 这两行只在真有事时出现：健康账号印「连续失败 0 次 · 锁定至 —」是凑数
+          （第 95 轮「共 7 台 · 7 启用」删掉的就是这种）。 -#}
+      {% if a.failed_count %}
+      <div>
+        <span class="fg-detail__k">连续失败</span>
+        <span class="fg-detail__v">{{ a.failed_count }} 次</span>
+      </div>
+      {% endif %}
+      {% if a.locked %}
+      <div>
+        <span class="fg-detail__k">锁定至</span>
+        <span class="fg-detail__v">{{ fmt_time(a.locked_until, '%m-%d %H:%M') }}</span>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  {# ---------- 动作 ----------
+     和行内那组是同一套：data-zone-open 走页级弹窗（z-index 高于抽屉），
+     data-api-action 走 app.js 的 document 委托。成功后 callApi 会 reload，
+     地址里还带着 ?u=，所以抽屉原地重开并显示新状态。 -#}
+  <div class="fg-detail__section fg-staff-card__actions">
+    {% if is_self %}
+    <p class="fg-hint">当前登录的就是这个账号：可以改姓名，但不能停用自己。</p>
+    {% else %}
+    <button type="button" class="fg-btn fg-btn--secondary fg-btn--sm"
+            data-api-action
+            data-api-url="/api/v1/admin/users/{{ a.user_id }}/reset-password"
+            data-api-method="POST"
+            data-confirm="重置后旧密码立即失效，确认重置 {{ a.display_name }} 的密码？">重置密码</button>
+    {% if a.is_active %}
+    <button type="button" class="fg-btn fg-btn--ghost fg-btn--sm"
+            data-api-action
+            data-api-url="/api/v1/admin/users/{{ a.user_id }}"
+            data-api-method="PATCH"
+            data-api-body='{"is_active": false}'
+            data-confirm="停用后该账号立即无法登录，历史记录仍保留。确认停用 {{ a.display_name }}？">停用账号</button>
+    {% else %}
+    <button type="button" class="fg-btn fg-btn--ghost fg-btn--sm"
+            data-api-action
+            data-api-url="/api/v1/admin/users/{{ a.user_id }}"
+            data-api-method="PATCH"
+            data-api-body='{"is_active": true}'>启用账号</button>
+    {% endif %}
+    {% endif %}
+  </div>
+</div>

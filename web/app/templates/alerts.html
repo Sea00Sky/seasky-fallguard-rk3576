@@ -1,0 +1,238 @@
+{# ==========================================================================
+   告警中心 /alerts（双端共用，按角色过滤）
+   结构：状态 Tab + 筛选栏 + 表格 + 480px 详情抽屉容器
+   上下文：events[]、total、page、size、filters{disposition,detection,severity,device,from,to,q}
+          devices[]、counts{...}（可选）、drawer_event（可选）、user
+   ========================================================================== #}
+{% extends "base.html" %}
+{% from "_macros.html" import sev_tag, detection_tag, disposition_tag, fmt_time, row_actions, empty_state, pager %}
+
+{% block title %}告警中心 · 衡护 HENGUARD{% endblock %}
+{% block page_key %}alerts{% endblock %}
+{#- 2026-11-03 用户：「把告警中心和历史事件页面的大字标题和刷新按钮删掉」。
+    与值班工作台同一处理：标题搬进 sr-only（h1 仍在，读屏/审计不受影响），
+    页头压成瘦条，把高度让给表格；刷新由 SSE / 浏览器自身承担。 -#}
+{% block page_title %}<span class="fg-sr-only">告警中心</span>{% endblock %}
+{% block page_head_class %} fg-page-head--slim{% endblock %}
+{% block page_subtitle %}{% endblock %}
+{#- V2：本页已迁移到浅色 V2 主题 -#}
+{% block html_theme %}v2{% endblock %}
+{% block theme_color %}#F4F6F4{% endblock %}
+
+{% set event_list = events if events is defined and events else [] %}
+{% set device_list = devices if devices is defined and devices else [] %}
+{% set point_list = points if points is defined and points else [] %}
+{% set f = filters if filters is defined and filters else {} %}
+{% set cur_disp = f.disposition if f.disposition is defined and f.disposition else '' %}
+{% set cur_detection = f.detection if f.detection is defined and f.detection else '' %}
+{% set cur_test = f.test if f.test is defined and f.test else '' %}
+{% set cur_severity = f.severity if f.severity is defined and f.severity else '' %}
+{% set cur_device = f.device if f.device is defined and f.device else '' %}
+{% set cur_point = f.point if f.point is defined and f.point else '' %}
+{% set cur_from = f.from if f.from is defined and f.from else '' %}
+{% set cur_to = f.to if f.to is defined and f.to else '' %}
+{% set cur_q = f.q if f.q is defined and f.q else '' %}
+{% set page_no = page if page is defined and page else 1 %}
+{% set page_size = size if size is defined and size else 20 %}
+{% set total_count = total if total is defined and total is not none else event_list|length %}
+{% set c = counts if counts is defined and counts else {} %}
+
+{#- 状态 Tab 做成宏：高亮类和 aria-current 必须同时成立，
+    写在六处迟早会漏一处 —— 视觉上「选中」了、读屏却不知道自己在哪。 -#}
+{% macro status_tab(dsp, label, count) -%}
+{%- set active = (cur_disp == dsp) -%}
+<a class="fg-tab {% if active %}is-active{% endif %}"
+   href="{% if dsp %}{{ request.url.include_query_params(disposition=dsp, page=1) }}{% else %}{{ request.url.remove_query_params(['disposition', 'page']) }}{% endif %}"
+   {% if active %}aria-current="page"{% endif %}>
+  {{ label }}
+  {% if count is defined and count is not none %}<span class="fg-tab__count">{{ count }}</span>{% endif %}
+</a>
+{%- endmacro %} %}
+
+{% block actions %}{% endblock %}
+
+{% block content %}
+<div class="fg-col-12" data-refresh-region="alerts-main">
+  {#- V2：Tab 与筛选栏是「控件层」，不是内容，挪出面板。
+      原来整个页面是一个大盒子，里面塞「控件 + 表格 + 分页」——
+      层级只能靠盒子里再切块，这正是模板感的来源。 -#}
+
+  {# ---------- 状态 Tab ---------- #}
+  <nav class="fg-tabs" aria-label="按处置状态筛选">
+    {{ status_tab('', '全部', c.all) }}
+    {{ status_tab('PENDING', '待接警', c.PENDING) }}
+    {{ status_tab('ACKED', '已接警', c.ACKED) }}
+    {{ status_tab('ON_SCENE', '已到场', c.ON_SCENE) }}
+    {{ status_tab('RESOLVED', '已处置', c.RESOLVED) }}
+    {{ status_tab('FALSE_ALARM', '误报', c.FALSE_ALARM) }}
+  </nav>
+
+  {# ---------- 筛选栏 ---------- #}
+  <form class="fg-filters" method="get" action="/alerts" role="search">
+    <input type="hidden" name="disposition" value="{{ cur_disp }}">
+    {% if cur_test %}<input type="hidden" name="test" value="{{ cur_test }}">{% endif %}
+
+    <div class="fg-field">
+      <label class="fg-label" for="filter-detection">检测态</label>
+      <select class="fg-select" id="filter-detection" name="detection">
+        <option value="">全部</option>
+        <option value="CONFIRMED" {% if cur_detection == 'CONFIRMED' %}selected{% endif %}>已确认</option>
+        <option value="EVER" {% if cur_detection == 'EVER' %}selected{% endif %}>曾经确认（含已撤回）</option>
+        <option value="RETRACTED" {% if cur_detection == 'RETRACTED' %}selected{% endif %}>模型已撤回</option>
+      </select>
+    </div>
+
+    <div class="fg-field">
+      <label class="fg-label" for="filter-severity">级别</label>
+      <select class="fg-select" id="filter-severity" name="severity">
+        <option value="">全部</option>
+        <option value="S1" {% if cur_severity == 'S1' %}selected{% endif %}>S1 紧急</option>
+        <option value="S2" {% if cur_severity == 'S2' %}selected{% endif %}>S2 重要</option>
+        <option value="S3" {% if cur_severity == 'S3' %}selected{% endif %}>S3 提示</option>
+      </select>
+    </div>
+
+    {#- 2026-11-03：这里原来列的是**设备**（device_code），没挂设备的点位一个都不出现，
+        用户报「只能看到 409病房」。改成列**点位**，筛选值是 light_key，
+        与灯带、点位页历史、pending_by_location 同一口径。
+        老链接里的 ?device=<device_code> 仍然有效（隐藏域原样带上）。 -#}
+    <div class="fg-field">
+      <label class="fg-label" for="filter-point">点位</label>
+      <select class="fg-select" id="filter-point" name="point">
+        <option value="">全部</option>
+        {% for p in point_list %}
+        <option value="{{ p.light_key }}" {% if cur_point == p.light_key %}selected{% endif %}>
+          {{ p.name }}{% if not p.stream_path %}（未配置摄像头）{% elif not p.is_active %}（已停用）{% endif %}
+        </option>
+        {% endfor %}
+      </select>
+      {#- 旧链接（门灯 / 点位画面页）带的是 ?device=<device_code>。它仍要生效，
+          但不能和点位筛选同时出现——两个「点位」控件各筛各的，用户会看不懂。
+          规则：选了点位就以点位为准（隐藏域不渲染），所以这里只在没选点位时带上。 -#}
+      {% if cur_device and not cur_point %}<input type="hidden" name="device" value="{{ cur_device }}">{% endif %}
+      {% if cur_device and not cur_point %}
+      <span class="fg-hint">当前按设备 {{ cur_device }} 筛选（旧链接）；选择点位后自动解除。</span>
+      {% endif %}
+    </div>
+
+    <div class="fg-field">
+      <label class="fg-label" for="filter-from">起始日期</label>
+      <input class="fg-input" type="date" id="filter-from" name="from" value="{{ cur_from }}"
+             autocomplete="off">
+    </div>
+
+    <div class="fg-field">
+      <label class="fg-label" for="filter-to">截止日期</label>
+      <input class="fg-input" type="date" id="filter-to" name="to" value="{{ cur_to }}"
+             autocomplete="off">
+    </div>
+
+    <div class="fg-field fg-field--grow">
+      <label class="fg-label" for="filter-q">搜索</label>
+      {#- 这里搜的是事件号前 8 位（十六进制）和点位名：关掉拼写检查，
+          否则浏览器会在 7c1f4a92 下面画红线；autocomplete 也关，别让它塞历史词。 -#}
+      <input class="fg-input" type="search" id="filter-q" name="q" value="{{ cur_q }}"
+             placeholder="如 7c1f4a92 或 4F-B 东走廊…"
+             autocomplete="off" spellcheck="false">
+    </div>
+
+    <div class="fg-field">
+      <span class="fg-label" aria-hidden="true">&nbsp;</span>
+      <div class="fg-btn-group">
+        <button type="submit" class="fg-btn fg-btn--primary">筛选</button>
+        <a class="fg-btn fg-btn--ghost" href="/alerts">清除筛选</a>
+      </div>
+    </div>
+  </form>
+
+  {# ---------- 表格 ----------
+     列序与台账一致：时间 → 点位 → 级别 → 检测态 → 处置态 →（人员）→ 操作。
+     两张表描述的是同一批事件，列不该按页面换个排法。
+     行上的 data-event-uid / data-revision 是行内接警的前提——
+     app.js 的 findEventUid() 往上找得到它，按钮才点得动。 #}
+  <section class="fg-panel fg-mt-4">
+  <div class="fg-panel__head">
+    <h2 class="fg-panel__title">告警</h2>
+  </div>
+  <div class="fg-panel__body fg-panel__body--flush">
+    <div class="fg-table-wrap">
+      <table class="fg-table">
+        <thead>
+          <tr>
+            <th scope="col">时间</th>
+            <th scope="col">点位</th>
+            <th scope="col">级别</th>
+            <th scope="col">检测态</th>
+            <th scope="col">处置态</th>
+            <th scope="col">人员</th>
+            <th scope="col">操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for event in event_list %}
+          <tr class="{% if event.detection_state == 'RETRACTED' and not event.ever_confirmed %}is-retracted{% endif %}"
+              data-detail-url="/alerts/{{ event.event_uid }}"
+              data-event-uid="{{ event.event_uid }}"
+              data-revision="{{ event.revision if event.revision is not none else 0 }}"
+              tabindex="0"
+              aria-label="事件 {{ event.location or '' }} {{ fmt_time(event.received_at) }}">
+            <td class="fg-mono fg-nowrap fg-table__time">
+              <span class="fg-table__date">{{ fmt_time(event.received_at, '%m-%d') }}</span>
+              <span class="fg-table__hm">{{ fmt_time(event.received_at, '%H:%M:%S') }}</span>
+            </td>
+            <td class="fg-nowrap">{{ event.location or '—' }}</td>
+            <td class="fg-nowrap">{{ sev_tag(event.severity) }}</td>
+            <td class="fg-nowrap">{{ detection_tag(event.detection_state, event.ever_confirmed) }}</td>
+            <td class="fg-nowrap">{{ disposition_tag(event.disposition_state) }}</td>
+            <td class="fg-nowrap">人员#{{ event.person_id if event.person_id is not none else '—' }}</td>
+            <td class="fg-nowrap">{{ row_actions(event, user.role if user is defined and user else 'nurse', '/alerts') }}</td>
+          </tr>
+          {% else %}
+          <tr class="fg-table__empty">
+            <td colspan="7">
+              {#- 空态必须给出真的能出去的路。
+                  本页首次进入会把区间默认成「今天」，所以裸 /alerts 再点一次还是今天——
+                  那条「清除筛选」就成了死循环。?from=&to= 是空的显式区间：
+                  _bound() 看到空串即视为不限，这是唯一能真正放开的链接。 -#}
+              {#- P12 决策 2（2026-11-04 补做）：**没被分配区域**和「有区域但今天没数据」
+                  是两件事，必须分开说。原来这里只有下面两句，第一句会建议护士
+                  「把日期放开看看」—— 可区域判据不随时间变，放开也永远是 0，
+                  等于让人白点一次还看不懂为什么。 -#}
+              {% if no_zone %}
+                {{ empty_state('你还没有负责的区域', '请联系本病区护士长为你分配区域。分配后，属于你的告警会自动出现在这里。', '', '', 'lock') }}
+              {% elif cur_from or cur_to %}
+                {{ empty_state('该时间段内没有告警', '', '查看全部时间', '/alerts?from=&to=', 'filter') }}
+              {% else %}
+                {{ empty_state('当前筛选下没有告警', '', '清除筛选', '/alerts', 'filter') }}
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="fg-panel__foot">
+    {{ pager(request, page_no, page_size, total_count, '条告警') }}
+  </div>
+  </section>
+</div>
+
+{# ---------- 480px 详情抽屉 ---------- #}
+<div class="fg-drawer-root" id="fg-drawer-root" {% if not drawer_event %}hidden{% endif %}>
+  <div class="fg-drawer-overlay" data-drawer-close></div>
+  <aside class="fg-drawer" role="dialog" aria-modal="true" aria-label="事件详情" tabindex="-1">
+    <div class="fg-drawer__body">
+      {% if drawer_event %}
+        {% set event = drawer_event %}
+        {% include "event_detail.html" %}
+      {% endif %}
+    </div>
+  </aside>
+</div>
+
+{# ---------- 行内「重开」用的页级弹窗（护士长才看得到那个按钮） ----------
+   抽屉里那份 id 是 fg-reopen-modal；这份必须换个 id，否则抽屉一载入就撞车。 #}
+{% with modal_id = 'fg-reopen-modal-row' %}{% include "_reopen_modal.html" %}{% endwith %}
+{% endblock %}

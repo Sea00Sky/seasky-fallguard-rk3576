@@ -1,0 +1,37 @@
+This project is distributed under the GNU Affero General Public License v3.0
+(see LICENSE). It contains or derives from the following third-party works.
+
+YOLO26n-pose
+  Upstream : Ultralytics YOLO26 (pose)
+  License  : GNU Affero General Public License v3.0
+  Files    : models/yolo26n_pose_480x640_fp16.rknn
+  Note     : converted weights derived from a YOLO26n-pose checkpoint.
+             The training and conversion code in training/ and quantization/
+             is the corresponding source for this artifact.
+
+ST-GCN++
+  Upstream : MMAction2 (OpenMMLab)
+  License  : Apache License 2.0
+  Files    : models/stgcnpp_v2_fp16.rknn
+
+MediaMTX
+  Upstream : https://github.com/bluenviron/mediamtx
+  License  : MIT
+  Note     : not bundled. Install separately when deploying the cloud side.
+
+RKNN Toolkit2 / librknnrt
+  Upstream : Rockchip
+  License  : proprietary
+  Note     : runtime libraries are not redistributed in this repository.
+             Install them from the Rockchip SDK; models were produced with
+             rknn-toolkit2 2.3.x.
+
+hls.js
+  Upstream : https://github.com/video-dev/hls.js
+  License  : Apache License 2.0
+  Files    : web/static/vendor/hls.light.min.js
+
+IBM Plex Mono
+  Upstream : https://github.com/IBM/plex
+  License  : SIL Open Font License 1.1
+  Files    : web/static/fonts/

@@ -1,0 +1,320 @@
+{# ==========================================================================
+   信息科管理端 · 审计日志 /admin/audit（只读）
+
+   2026-11-07 重排（用户：「审计日志你优化一下」）。改前是 P11 那版：
+   大标题 + 副标题、5 个裸控件 + 整页表单提交、7 列平表、**没有行详情**。
+
+   为什么改：现网 1400+ 条里 **75% 是登录 / 查看快照 / 查看片段**这类机器留痕，
+   按时间倒序取首屏 50 条几乎全是登录。而审计的全部价值在 detail 里
+   （改了什么 → 什么、一并撤掉了哪些区域、谁越权、为什么撤回）——
+   改前 handler 查了 detail、模板一个字节都没渲染。
+
+   现在的形态：
+     瘦页头 → 快捷筛选片（全部 / 管理动作 / 处置记录 / 越权拦截 / 系统留痕）
+       └ 一个面板：筛选条（搜索 / 时间范围 / 起止日期 / 操作人 / 动作分组 / 结果）
+       └ 单表：一行一条流水，点行开右侧详情抽屉
+     抽屉根常驻 DOM
+
+   ⚠️ 本页**没有任何写操作**，所以筛选状态可以纯靠 URL（链接 + GET 表单），
+      不需要像点位页/账号页那样写前端筛选脚本 —— 那两页是「一次拉全量再筛」，
+      审计页有 1400+ 条且会长到 7 万+/年，**必须留在服务端筛**。
+   ⚠️ 抽屉根 `#fg-drawer-root` 必须**常渲染**（含 `.fg-drawer__body`），
+      否则 app.js 的 loadDetail() 拿不到节点会退回整页跳转。
+   ⚠️ 抽屉根和 <script> 必须在 `data-refresh-region` **之外** —— swapRegions 是
+      整区替换，而且不会执行区域内的脚本。
+   ========================================================================== #}
+{% extends "base.html" %}
+{% from "_macros.html" import icon, fmt_time, empty_state, pager, audit_action, audit_role,
+                              audit_result_tag, audit_detail, event_ref, AUDIT_ACTIONS %}
+
+{% block title %}审计日志 · 衡护 HENGUARD{% endblock %}
+{% block page_key %}admin-audit{% endblock %}
+{#- V2：浅色 V2 主题（2026-11-05 第92轮，信息科四页一起搬） -#}
+{% block html_theme %}v2{% endblock %}
+{% block theme_color %}#F4F6F4{% endblock %}
+{#- 大标题收进 sr-only + 瘦页头（与点位页/设备页/账号页同款）。
+    ⚠️ page_head_class 的值**前面必须有空格**，否则拼成 fg-page-headfg-page-head--slim。
+    副标题原来写「只读、不可删、不可改。表上有触发器禁止 UPDATE / DELETE。」——
+    那是实现细节（「触发器」不是用户概念），已删；不覆写 actions（:empty 自动收起）。 -#}
+{% block page_title %}<span class="fg-sr-only">审计日志</span>{% endblock %}
+{% block page_head_class %} fg-page-head--slim{% endblock %}
+
+{% block content %}
+{% set log_list = logs if logs is defined and logs else [] %}
+{% set scope_list = scopes if scopes is defined and scopes else [] %}
+{% set counts = scope_counts if scope_counts is defined and scope_counts else {} %}
+{#- ⚠️ 「没传」和「传了空串」是两件事，不能都用 `or 'all'` 兜：
+    没传 scope ⇒ 默认全部；**传空串是 handler 在说「手选了具体动作，别高亮任何片」**
+    （main.py:2817）。写成 `scope or 'all'` 会让「全部」在只筛一个动作时亮着 —— 名不副实。
+    hidden input 那边仍兜 'all'：清掉动作下拉再提交时该回到全量。 -#}
+{% set cur_scope = 'all' if scope is not defined or scope is none else scope %}
+{% set f = filters if filters is defined and filters else {} %}
+{% set cur_from = f.from if f.from is defined and f.from else '' %}
+{% set cur_to = f.to if f.to is defined and f.to else '' %}
+{% set cur_range = f.range if f.range is defined and f.range else '' %}
+{% set cur_actor = f.actor if f.actor is defined and f.actor else '' %}
+{% set cur_action = f.action if f.action is defined and f.action else '' %}
+{% set cur_result = f.result if f.result is defined and f.result else '' %}
+{% set cur_q = f.q if f.q is defined and f.q else '' %}
+{% set page_no = page if page is defined and page else 1 %}
+{% set page_size = size if size is defined and size else 50 %}
+{% set total_count = total if total is defined and total is not none else log_list|length %}
+{% set range_list = range_options if range_options is defined and range_options else [] %}
+
+<div class="fg-col-12" data-refresh-region="audit-main">
+
+  {#- 快捷筛选片：复用告警中心的 .fg-tabs 原语（带计数徽标 + aria-current），不造新控件。
+      放在面板**外面** —— Tab / 筛选栏是控件层，不是内容。
+      ⚠️ 高亮类与 aria-current 必须同时成立，否则视觉上选中了、读屏不知道自己在哪。
+      ⚠️ 手选了「动作」下拉后 cur_scope 为 ''，此时所有片都不高亮（那是对的：
+         结果已经不是任何一个片的全集了）。 -#}
+  {% if scope_list %}
+  <nav class="fg-tabs" aria-label="按审计范围筛选">
+    {% for key, label, _acts in scope_list %}
+    <a class="fg-tab{% if cur_scope == key %} is-active{% endif %}"
+       href="{{ request.url.include_query_params(scope=key, page=1) }}"
+       {% if cur_scope == key %}aria-current="page"{% endif %}>
+      {{ label }}
+      <span class="fg-tab__count">{{ counts.get(key, 0) }}</span>
+    </a>
+    {% endfor %}
+  </nav>
+  {% endif %}
+
+  <section class="fg-panel">
+    <div class="fg-panel__head">
+      <h2 class="fg-panel__title">审计</h2>
+      <div class="fg-panel__actions">
+        <a class="fg-btn fg-btn--secondary fg-btn--sm" href="{{ request.url }}" data-refresh>
+          {{ icon('refresh', 16) }}刷新</a>
+      </div>
+    </div>
+
+    <div class="fg-panel__body">
+      {#- 服务端筛选（GET）。选完即提交，不用再点一次「筛选」。
+          ⚠️ scope 必须作为 hidden 跟着提交，否则一筛选就掉出快捷片。 -#}
+      <form class="fg-filters fg-filters--panel" method="get" action="/admin/audit" role="search">
+        <div class="fg-field">
+          <label class="fg-label" for="af-q">搜索</label>
+          {#- 占位符给**例子**而不是抽象类别（web-interface-guidelines：placeholder 要举例、
+              并以 … 收尾）。搜的是 object_id 或 action，所以举一个设备码 + 一个动作码。 -#}
+          <input class="fg-input" type="search" id="af-q" name="q" value="{{ cur_q }}"
+                 autocomplete="off" placeholder="如 K7C-4FB-01、USER_UPDATE…">
+        </div>
+
+        <div class="fg-field">
+          <label class="fg-label" for="af-range">时间范围</label>
+          <select class="fg-select" id="af-range" name="range" autocomplete="off" data-audit-auto>
+            <option value="">全部</option>
+            {% for value, label in range_list %}
+            <option value="{{ value }}" {% if cur_range == value %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="fg-field">
+          <label class="fg-label" for="af-from">起始日期</label>
+          <input class="fg-input" type="date" id="af-from" name="from" value="{{ cur_from }}"
+                 autocomplete="off" data-audit-auto>
+        </div>
+        <div class="fg-field">
+          <label class="fg-label" for="af-to">截止日期</label>
+          <input class="fg-input" type="date" id="af-to" name="to" value="{{ cur_to }}"
+                 autocomplete="off" data-audit-auto>
+        </div>
+
+        <div class="fg-field">
+          <label class="fg-label" for="af-actor">操作人</label>
+          <select class="fg-select" id="af-actor" name="actor" autocomplete="off" data-audit-auto>
+            <option value="">全部</option>
+            {% for actor in actors if actors is defined and actors %}
+            <option value="{{ actor.user_id }}" {% if cur_actor|string == actor.user_id|string %}selected{% endif %}>
+              {{ actor.display_name }}
+            </option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="fg-field">
+          <label class="fg-label" for="af-action">动作</label>
+          <select class="fg-select" id="af-action" name="action" autocomplete="off" data-audit-auto>
+            <option value="">全部</option>
+            {#- 分组与快捷片取同一份 scopes（唯一来源在 main.py::AUDIT_SCOPES）——
+                不这么写就会出现「同一个动作在片里属于管理动作、在下拉里属于账号与权限」。 -#}
+            {% for key, label, acts in scope_list if key != 'all' %}
+            <optgroup label="{{ label }}">
+              {% for a in acts %}
+              <option value="{{ a }}" {% if cur_action == a %}selected{% endif %}>{{ AUDIT_ACTIONS.get(a, a) }}</option>
+              {% endfor %}
+            </optgroup>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="fg-field">
+          <label class="fg-label" for="af-result">结果</label>
+          <select class="fg-select" id="af-result" name="result" autocomplete="off" data-audit-auto>
+            <option value="">全部</option>
+            <option value="OK" {% if cur_result == 'OK' %}selected{% endif %}>成功</option>
+            <option value="DENIED" {% if cur_result == 'DENIED' %}selected{% endif %}>拒绝</option>
+            <option value="FAIL" {% if cur_result == 'FAIL' %}selected{% endif %}>失败</option>
+          </select>
+        </div>
+
+        {#- ⚠️ hidden input **不能放在表单最前面**：`.fg-filters--panel > .fg-field:first-child`
+            才是吃 `flex: 1 1 220px` 的那个弹性框（app.css:1661）。放最前面会把 first-child
+            占掉，七个控件全落到 `flex: 0 0 132px` —— 最该宽的搜索框和日期选择器一样宽。
+            放在这里（控件之后）位置无所谓，隐藏域不出盒子，提交照样带上。 -#}
+        <input type="hidden" name="scope" value="{{ cur_scope or 'all' }}">
+
+        <div class="fg-filters__tail">
+          <span class="fg-filter__count">共 <b>{{ total_count }}</b> 条</span>
+          <a class="fg-btn fg-btn--ghost fg-btn--sm" href="/admin/audit">清除筛选</a>
+        </div>
+      </form>
+
+      <div class="fg-table-wrap">
+        <table class="fg-table">
+          <thead>
+            <tr>
+              <th scope="col">时间</th>
+              <th scope="col">操作人</th>
+              <th scope="col">动作</th>
+              <th scope="col">对象</th>
+              <th scope="col">结果</th>
+              <th scope="col">IP</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in log_list %}
+            {#- 整行可点开抽屉（app.js: 点 a/button/input 等交互元素会跳过；Enter/Space 同效）。
+                角色并进操作人一列：7 栏在 1366 下会挤（第 96 轮首页的教训）。 -#}
+            <tr data-detail-url="/admin/audit?log={{ row.audit_id }}" tabindex="0">
+              <td class="fg-mono fg-nowrap">{{ fmt_time(row.at, '%m-%d %H:%M:%S') }}</td>
+              {#- ⚠️ 名字恰好就是角色名时不补角色小字：现网 admin 的 display_name 就叫
+                  「信息科管理员」，两个都印就是「信息科管理员 信息科管理员」（真数据截图抓到的）。
+                  这是**通用规则**不是特判账号——任何同名账号都适用。 -#}
+              {%- set _an = row.actor_name if row.actor_name is defined and row.actor_name else '系统' -%}
+              {%- set _ar = audit_role(row.actor_role) if row.actor_role is defined and row.actor_role else '' -%}
+              <td class="fg-nowrap">
+                <span class="fg-strong">{{ _an }}</span>
+                {%- if _ar and _ar != _an %} <span class="fg-muted">{{ _ar }}</span>{% endif %}
+              </td>
+              <td class="fg-nowrap">{{ audit_action(row.action) if row.action else '—' }}</td>
+              {#- 事件类行 = 地点 + 事件号。只有地点的话「409病房」一天几十条分不出是哪一条；
+                  事件号与事件台账**同款格式**（_macros.html::event_ref，8 位前缀-末 4 位），
+                  前缀还能直接粘进台账的搜索框。 -#}
+              <td>
+                {%- if row.obj is defined and row.obj -%}
+                <span translate="no">{{ row.obj.text }}</span>
+                {%- if row.obj.ref %} <span class="fg-mono fg-muted" translate="no">{{ event_ref(row.obj.ref) }}</span>{% endif %}
+                {%- if row.obj.missing %} <span class="fg-muted">已不存在</span>{% endif %}
+                {%- else %}—{%- endif -%}
+              </td>
+              <td class="fg-nowrap">{{ audit_result_tag(row.result) if row.result else '—' }}</td>
+              <td class="fg-mono fg-nowrap" translate="no">{{ row.client_ip if row.client_ip is defined and row.client_ip else '—' }}</td>
+            </tr>
+            {% else %}
+            <tr class="fg-table__empty">
+              <td colspan="6">{{ empty_state('当前筛选下没有审计记录', '', '清除筛选', '/admin/audit', 'audit') }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      {{ pager(request, page_no, page_size, total_count, '条审计') }}
+    </div>
+  </section>
+</div>
+
+{# ---------- 审计详情抽屉 ----------
+   复用 app.js 的 loadDetail()：抓 /admin/audit?log=<id>（自动加 drawer=1），
+   整块换掉 .fg-drawer__body。所以这个根**永远**渲染，没选中时 hidden。
+   ⚠️ 必须在 data-refresh-region 之外，否则点「刷新」会把抽屉内容一起换掉。 -#}
+<div class="fg-drawer-root" id="fg-drawer-root" {% if not card_row %}hidden{% endif %}>
+  <div class="fg-drawer-overlay" data-drawer-close></div>
+  <aside class="fg-drawer" role="dialog" aria-modal="true" aria-label="审计详情" tabindex="-1">
+    <div class="fg-drawer__body">
+      {% if card_row %}
+      <div class="fg-detail">
+        <div class="fg-detail__section">
+          <div class="fg-detail__title">
+            {{ audit_action(card_row.action) if card_row.action else '—' }}
+            <span class="fg-muted" aria-hidden="true">·</span>
+            {{ audit_result_tag(card_row.result) if card_row.result else '—' }}
+          </div>
+          <div class="fg-detail__grid">
+            <div>
+              <span class="fg-detail__k">操作人</span>
+              <span class="fg-detail__v">
+                {#- 与表格同一条规则：名字==角色名时不重复（见 tbody 里的注释）。 -#}
+                {%- set _cn = card_row.actor_name if card_row.actor_name is defined and card_row.actor_name else '系统' -%}
+                {%- set _cr = audit_role(card_row.actor_role) if card_row.actor_role is defined and card_row.actor_role else '' -%}
+                {{- _cn }}
+                {%- if _cr and _cr != _cn %} <span class="fg-muted">（{{ _cr }}）</span>{%- endif %}
+              </span>
+            </div>
+            <div>
+              <span class="fg-detail__k">时间</span>
+              <span class="fg-detail__v fg-detail__v--mono">{{ fmt_time(card_row.at, '%Y-%m-%d %H:%M:%S') }}</span>
+            </div>
+            <div>
+              <span class="fg-detail__k">对象</span>
+              <span class="fg-detail__v">
+                {%- if card_row.obj is defined and card_row.obj -%}
+                {{ card_row.obj.text }}
+                {%- if card_row.obj.ref %} <span class="fg-mono fg-muted" translate="no">{{ event_ref(card_row.obj.ref) }}</span>{% endif %}
+                {%- if card_row.obj.missing %} <span class="fg-muted">（已不存在）</span>{% endif %}
+                {%- else %}—{%- endif -%}
+              </span>
+            </div>
+            <div>
+              <span class="fg-detail__k">来源 IP</span>
+              <span class="fg-detail__v fg-detail__v--mono" translate="no">{{ card_row.client_ip if card_row.client_ip is defined and card_row.client_ip else '—' }}</span>
+            </div>
+          </div>
+        </div>
+
+        {#- detail 是 JSONB，各 action 形状不同；渲染规则全在 _macros.html::audit_detail。
+            区域 UUID → 名字靠 handler 传进来的 zone_names（detail 里只存了 UUID）。 -#}
+        {#- 抬头已经把登录名写出来了（「张伟（zhangw）」）就别在正文里再列一遍「登录名 zhangw」。
+            **判据是抬头里真的有它**，而不是「object_type 是 user/session」—— 抬头兜不住时
+            （账号已删、只有 uid）正文那份就是唯一线索，得留着。 -#}
+        {%- set _obj = card_row.obj if card_row.obj is defined else none -%}
+        {%- set _dup = ('login_name',) if (_obj and card_row.detail is mapping
+                                           and card_row.detail.get('login_name')
+                                           and card_row.detail.get('login_name') in _obj.text)
+                       else none -%}
+        {{ audit_detail(card_row.detail,
+                        zone_names=zone_names if zone_names is defined else none,
+                        ward_names=ward_names if ward_names is defined else none,
+                        drop=_dup) }}
+      </div>
+      {% endif %}
+    </div>
+  </aside>
+</div>
+
+<noscript>
+  <style>
+    .fg-drawer-root { position: static; }
+    .fg-drawer-overlay { display: none; }
+    .fg-drawer { max-width: none; width: auto; }
+  </style>
+</noscript>
+{% endblock %}
+
+{% block scripts %}
+<script>
+/* 筛选控件改完就提交，省掉一次「点筛选」。本页无写操作，所以不需要任何别的脚本。
+   ⚠️ 必须放在 data-refresh-region 之外：swapRegions 换区时不会执行区域内的 <script>。 */
+(function () {
+  document.querySelectorAll('[data-audit-auto]').forEach(function (el) {
+    el.addEventListener('change', function () {
+      if (el.form) el.form.submit();
+    });
+  });
+})();
+</script>
+{% endblock %}

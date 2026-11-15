@@ -1,0 +1,197 @@
+{# ==========================================================================
+   判定策略面板（partial）—— 设备台账页与点位详情页共用。
+   调用方必须提供：config_device、config、base、admin_mode
+   ⚠️ include 不继承调用方的 `{% from %}` 导入，宏必须在本文件自己 import。
+   ========================================================================== #}
+{% from "_macros.html" import icon, fmt_time, fmt_iso_time, iso %}
+{#- 判定策略（P1）：保存后板端拉取 → 重启检测 → ack，约 5–10 秒盲区 -#}
+{% if config_device is defined and config_device %}
+{% set cfg = config if config is defined and config else {} %}
+{% set desired = cfg.get('desired') if cfg else none %}
+{% set revisions = cfg.get('revisions') if cfg else [] %}
+{% set cur_rev = desired.rev if desired else 0 %}
+{% set applied_rev = config_device.last_policy_rev %}
+{% set p = desired.params if desired else {
+     'confirm_windows': 2, 'retract_windows': 4, 'cooldown_s': 30,
+     'max_persons_stgcn': 3, 'stgcn_queue_max': 4,
+     'geo_veto_ar_max': 1.8, 'geo_veto_bottom_shift': 25,
+     'geo_veto_r_end': 0.81, 'geo_veto_min_box': 20, 'strong_confirm': 0.65} %}
+<section class="fg-panel fg-col-12">
+  <div class="fg-panel__head">
+    <h2 class="fg-panel__title">判定策略 · {{ config_device.device_name }}</h2>
+    <div class="fg-panel__actions">
+      <a class="fg-btn fg-btn--ghost fg-btn--sm" href="{{ base }}">返回</a>
+    </div>
+  </div>
+  <div class="fg-panel__body">
+    <div class="fg-freshbar">
+      <span class="fg-freshbar__item">
+        <span class="fg-freshbar__k">期望版本</span>
+        <span class="fg-freshbar__v fg-mono">rev {{ cur_rev }}</span>
+      </span>
+      <span class="fg-freshbar__item">
+        <span class="fg-freshbar__k">已生效</span>
+        <span class="fg-freshbar__v fg-mono">{% if applied_rev %}rev {{ applied_rev }}{% else %}—{% endif %}</span>
+      </span>
+      <span class="fg-freshbar__item">
+        <span class="fg-freshbar__k">最后心跳</span>
+        <span class="fg-freshbar__v">
+          {%- if config_device.last_seen_at -%}
+          <span data-relative-time="{{ iso(config_device.last_seen_at) }}">{{ fmt_iso_time(config_device.last_seen_at) }}</span>
+          {%- else -%}—{%- endif -%}
+        </span>
+      </span>
+      <span class="fg-freshbar__item">
+        <span class="fg-freshbar__k">状态</span>
+        <span class="fg-freshbar__v">
+          {%- if not desired -%}未配置
+          {%- elif applied_rev == cur_rev -%}已生效
+          {%- else -%}待生效{%- endif -%}
+        </span>
+      </span>
+    </div>
+
+    {% if admin_mode %}
+    <form data-api-form
+          data-api-endpoint="/api/v1/admin/devices/{{ config_device.device_id }}/config"
+          data-api-method="PUT"
+          data-success-url="{{ base }}?config={{ config_device.device_id }}"
+          data-success-text="已下发，等待设备生效">
+      <input type="hidden" name="base_rev" value="{{ cur_rev }}">
+      <input type="hidden" name="max_persons_stgcn" data-nest="params" value="3">
+      <input type="hidden" name="stgcn_queue_max" data-nest="params" value="4">
+      <div class="fg-formgrid fg-mt-4">
+        <div class="fg-field">
+          <label class="fg-label" for="cfg-preset">预设</label>
+          <select class="fg-select" id="cfg-preset" data-cfg-preset>
+            <option value="">选择预设…</option>
+            <option value="stable">稳健（少误报）</option>
+            <option value="standard">标准（当前生产）</option>
+            <option value="sensitive">灵敏（少漏报）</option>
+          </select>
+        </div>
+        <div class="fg-field">
+          <label class="fg-label" for="cfg-confirm">确认窗数</label>
+          <input class="fg-input" id="cfg-confirm" name="confirm_windows" data-nest="params" type="number" min="1" max="5"
+                 value="{{ p.confirm_windows }}">
+        </div>
+        <div class="fg-field">
+          <label class="fg-label" for="cfg-retract">撤回窗数</label>
+          <input class="fg-input" id="cfg-retract" name="retract_windows" data-nest="params" type="number" min="1" max="20"
+                 value="{{ p.retract_windows }}">
+        </div>
+        <div class="fg-field">
+          <label class="fg-label" for="cfg-cooldown">冷却（秒）</label>
+          <input class="fg-input" id="cfg-cooldown" name="cooldown_s" data-nest="params" type="number" min="0" max="300" step="1"
+                 value="{{ p.cooldown_s }}">
+        </div>
+        <div class="fg-field">
+          <label class="fg-label" for="cfg-strong">强确认阈值</label>
+          <input class="fg-input" id="cfg-strong" name="strong_confirm" data-nest="params" type="number" min="0" max="1" step="0.01"
+                 value="{{ p.strong_confirm }}">
+        </div>
+        <div class="fg-field">
+          <label class="fg-label" for="cfg-ar">几何 ar_max</label>
+          <input class="fg-input" id="cfg-ar" name="geo_veto_ar_max" data-nest="params" type="number" min="0" max="5" step="0.01"
+                 value="{{ p.geo_veto_ar_max }}">
+        </div>
+        <div class="fg-field">
+          <label class="fg-label" for="cfg-bs">几何 bottom_shift</label>
+          <input class="fg-input" id="cfg-bs" name="geo_veto_bottom_shift" data-nest="params" type="number" min="0" max="200" step="1"
+                 value="{{ p.geo_veto_bottom_shift }}">
+        </div>
+        <div class="fg-field">
+          <label class="fg-label" for="cfg-rend">时序 r_end</label>
+          <input class="fg-input" id="cfg-rend" name="geo_veto_r_end" data-nest="params" type="number" min="0" max="1" step="0.01"
+                 value="{{ p.geo_veto_r_end }}">
+        </div>
+        <div class="fg-field">
+          <label class="fg-label" for="cfg-minbox">最少框数</label>
+          <input class="fg-input" id="cfg-minbox" name="geo_veto_min_box" data-nest="params" type="number" min="0" max="60" step="1"
+                 value="{{ p.geo_veto_min_box }}">
+        </div>
+        <div class="fg-field fg-field--full">
+          <label class="fg-label" for="cfg-note">变更说明<span class="fg-label__req" aria-hidden="true"></span></label>
+          <input class="fg-input" id="cfg-note" name="note" maxlength="200" required
+                 placeholder="写清楚为什么改，会进审计">
+        </div>
+      </div>
+      <div class="fg-note fg-note--warn fg-mt-3">
+        {{ icon('alert', 18) }}
+        <span>保存后检测进程会重启约 5–10 秒，这期间不会产生新告警。请在低峰操作。</span>
+      </div>
+      <div class="fg-error-text fg-mt-3" data-form-error hidden></div>
+      <div class="fg-panel__foot">
+        <button type="submit" class="fg-btn fg-btn--primary">下发到设备</button>
+        <a class="fg-btn fg-btn--ghost" href="{{ base }}">取消</a>
+      </div>
+    </form>
+    {% else %}
+    {#- 护士长只读：能看到当前生效参数，但调灵敏度是信息科的职责（P11） -#}
+    <div class="fg-mt-4">
+      <p class="fg-hint">当前生效参数（只读）。调整灵敏度请联系信息科。</p>
+      <dl class="fg-devcard__spec">
+        <div><dt>确认窗数</dt><dd>{{ p.confirm_windows }}</dd></div>
+        <div><dt>撤回窗数</dt><dd>{{ p.retract_windows }}</dd></div>
+        <div><dt>冷却（秒）</dt><dd>{{ p.cooldown_s }}</dd></div>
+        <div><dt>强确认阈值</dt><dd>{{ p.strong_confirm }}</dd></div>
+        <div><dt>几何 ar_max</dt><dd>{{ p.geo_veto_ar_max }}</dd></div>
+        <div><dt>几何 bottom_shift</dt><dd>{{ p.geo_veto_bottom_shift }}</dd></div>
+        <div><dt>时序 r_end</dt><dd>{{ p.geo_veto_r_end }}</dd></div>
+        <div><dt>最少框数</dt><dd>{{ p.geo_veto_min_box }}</dd></div>
+      </dl>
+    </div>
+    {% endif %}
+
+    {% if revisions %}
+    <div class="fg-table-wrap fg-mt-4">
+      <table class="fg-table">
+        <thead>
+          <tr><th>版本</th><th>时间</th><th>说明</th><th></th></tr>
+        </thead>
+        <tbody>
+          {% for r in revisions %}
+          <tr>
+            <td class="fg-mono">rev {{ r.rev }}</td>
+            <td>{{ fmt_time(r.created_at, '%m-%d %H:%M') }}</td>
+            <td>{{ r.note or '—' }}</td>
+            <td class="fg-text-right">
+              {% if admin_mode %}
+              <button type="button" class="fg-btn fg-btn--ghost fg-btn--sm"
+                      data-api-action
+                      data-api-url="/api/v1/admin/devices/{{ config_device.device_id }}/config/rollback"
+                      data-api-body='{"to_rev": {{ r.rev }}, "note": "页面回滚到 rev {{ r.rev }}"}'
+                      data-confirm="回滚到 rev {{ r.rev }}？设备会重启检测约 5–10 秒。">回滚</button>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
+  </div>
+</section>
+<script>
+(function () {
+  var sel = document.querySelector('[data-cfg-preset]');
+  if (!sel) return;
+  var presets = {
+    stable:    {confirm_windows: 3, retract_windows: 3, cooldown_s: 60, strong_confirm: 0.75,
+                geo_veto_ar_max: 1.8, geo_veto_bottom_shift: 25, geo_veto_r_end: 0.81, geo_veto_min_box: 20},
+    standard:  {confirm_windows: 2, retract_windows: 4, cooldown_s: 30, strong_confirm: 0.65,
+                geo_veto_ar_max: 1.8, geo_veto_bottom_shift: 25, geo_veto_r_end: 0.81, geo_veto_min_box: 20},
+    sensitive: {confirm_windows: 1, retract_windows: 6, cooldown_s: 15, strong_confirm: 0.55,
+                geo_veto_ar_max: 0, geo_veto_bottom_shift: 0, geo_veto_r_end: 0, geo_veto_min_box: 20}
+  };
+  sel.addEventListener('change', function () {
+    var p = presets[sel.value];
+    if (!p) return;
+    Object.keys(p).forEach(function (k) {
+      var el = document.querySelector('[name="' + k + '"]');
+      if (el) el.value = p[k];
+    });
+  });
+})();
+</script>
+{% endif %}

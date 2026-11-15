@@ -1,0 +1,80 @@
+{# ==========================================================================
+   修改密码 /settings
+   上下文：user、error
+
+   ⚠️ 这个路由不能删：头像下拉那行是 `<a href="/settings">`（多挂了 data-modal-open），
+      **无 JS 时它就是唯一的改密入口**，删了就是死按钮。
+      （2026-11-05 第89轮之前它还是「首登死锁」的兜底 —— 现在首登走强制弹窗，
+        那条理由没了，但无 JS 兜底这条仍然成立。）
+   页面定位：单一职责的改密页。提示音 / 账号信息已移到顶栏用户菜单。
+
+   2026-11-05 第89轮：删掉 `force` / `notice` 两个分支（首登改弹窗后没有生产者了）。
+      那一版的首登告示条「首次登录必须修改密码。修改前不能进入任何业务页面。」
+      随 `_guard` 的重定向一起删 —— 现在这句话在弹窗里说（`_password_modal.html`）。
+
+   2026-11-05 重排（用户：「重新排布一下，有点不好看」）：
+     ① 页头大标题与副标题撤掉（标题进 sr-only，沿用 /alerts 的瘦页头口径）。
+        副标题「改完会退出登录，需要重新登录一次。」**本身是错的** ——
+        `POST /api/v1/auth/password` 只改 password_hash / must_change_password，
+        不清会话（routes/auth.py:change_password 全函数无 delete_cookie），
+        前端成功后也只是 location.assign(home)。删它是修一处假话，不只是去美化。
+     ② 面板头「设置新密码 / 至少 12 个字符」整条去掉：那是第二个标题，
+        且「至少 12 个字符」和字段 hint 重复。密码规则只留字段下一行。
+     ③ 560px 靠左的单列表单改成内容区居中的一张卡（见 app.css 的
+        body[data-page="settings"] 段），右边不再空一大片。
+     ④ 底部「30 分钟无操作会自动退出登录…」按用户要求删掉。
+   ========================================================================== #}
+{% extends "base.html" %}
+{#- `icon` 导入随首登告示条（唯一用处）一起删了，别再导入 -#}
+
+{% block title %}修改密码 · 衡护 HENGUARD{% endblock %}
+{% block page_key %}settings{% endblock %}
+{% block page_title %}<span class="fg-sr-only">修改密码</span>{% endblock %}
+{% block page_head_class %} fg-page-head--slim{% endblock %}
+{% block page_subtitle %}{% endblock %}
+
+{% block content %}
+{% set role = user.role if user is defined and user else 'nurse' %}
+{#- 改完密码的返回入口；管理员要回 /admin/overview，不能回护士台（403） -#}
+{% set home = home_for(role) %}
+
+{% if error %}
+<div class="fg-banner fg-banner--danger" role="alert">{{ error }}</div>
+{% endif %}
+
+<section class="fg-panel">
+  <form data-api-form data-api-endpoint="/api/v1/auth/password" data-api-method="POST"
+        data-success-url="{{ home }}" data-success-text="密码已修改" data-reload="0">
+    <div class="fg-panel__body">
+      <div class="fg-field">
+        <label class="fg-label" for="old-password">当前密码<span class="fg-label__req" aria-hidden="true"></span></label>
+        <input class="fg-input" id="old-password" name="old_password" type="password"
+               autocomplete="current-password" required>
+      </div>
+      <div class="fg-field fg-mt-4">
+        <label class="fg-label" for="new-password">新密码<span class="fg-label__req" aria-hidden="true"></span></label>
+        <input class="fg-input" id="new-password" name="new_password" type="password"
+               autocomplete="new-password" minlength="12" required>
+        {#- 2026-11-05：提示只留字数。—— 后半句「不强制大小写与符号，但会拒绝常见弱密码」
+            描述的限制**代码里根本不存在**：全项目密码策略就是
+            `security.py` 的 12 ≤ len ≤ 256（`auth.py::change_password` 也只判长度 + 非空白），
+            没有任何弱密码词典。再写回去就是第三次「文案在编」。 -#}
+        <span class="fg-hint">至少 12 个字符。</span>
+      </div>
+      <div class="fg-field fg-mt-4">
+        <label class="fg-label" for="confirm-password">确认新密码<span class="fg-label__req" aria-hidden="true"></span></label>
+        <input class="fg-input" id="confirm-password" name="_confirm_password" type="password"
+               autocomplete="new-password" minlength="12" required
+               data-match="#new-password">
+      </div>
+      <div class="fg-error-text fg-mt-3" data-form-error hidden></div>
+    </div>
+    <div class="fg-panel__foot">
+      <button type="submit" class="fg-btn fg-btn--primary">保存新密码</button>
+      {#- home 对护士是 /nurse/today（值班工作台）、对护士长是 /head/overview（病区总览），
+          「返回首页」只对一半角色成立 -#}
+      <a class="fg-btn fg-btn--ghost" href="{{ home }}">返回首页</a>
+    </div>
+  </form>
+</section>
+{% endblock %}

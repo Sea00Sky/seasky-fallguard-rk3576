@@ -1,0 +1,93 @@
+{# ==========================================================================
+   新建账号表单（partial，2026-11-07 账号页重排）
+
+   由 admin_accounts.html 的**独立抽屉根** `#fg-acc-new-drawer` 承载 —— 抽出来是因为
+   原先它常驻在页面上半屏，占掉首屏三分之一；用户 2026-11-07 的三个痛点是
+   「观感与密度 / 找人找得慢 / 操作太绕」，常驻表单是第一眼就看得见的密度问题。
+
+   ⚠️ 这个抽屉根**常驻 DOM**，正常路径由按钮的 `data-drawer-open="#fg-acc-new-drawer"`
+       客户端直接开，**不进 URL**。于是建号成功后 app.js 的 `data-needs-reload`
+       整页刷新会回到干净的 /admin/accounts，而不会带着参数把空表单重新弹开。
+       `?acc_new=1` 只是无 JS / 深链兜底（服务端据此预开）。
+   ⚠️ include 不继承调用方的宏导入，icon 必须自己 import。
+   ⚠️ 提交成功后响应必带 `one_time_password` ⇒ app.js 走 `showOneTimePassword()`
+       并**提前 return**，所以这里不需要 `data-success-text`（那是句死文案）。
+       一次性密码弹窗本体在 admin_accounts.html 里（id 被 app.js 硬编码，不能改）。
+   ========================================================================== #}
+{% from "_macros.html" import icon %}
+{% set ward_list = wards if wards is defined and wards else [] %}
+<section class="fg-panel fg-col-12">
+  <div class="fg-panel__head">
+    <h2 class="fg-panel__title">新建账号</h2>
+    <div class="fg-panel__actions">
+      <button type="button" class="fg-drawer__close" data-drawer-close aria-label="关闭">
+        {{ icon('x', 20) }}
+      </button>
+    </div>
+  </div>
+  <form data-api-form data-acc-new-form
+        data-api-endpoint="/api/v1/admin/users" data-api-method="POST"
+        data-success-url="/admin/accounts">
+    <div class="fg-panel__body">
+      <div class="fg-formgrid">
+        <div class="fg-field">
+          <label class="fg-label" for="acc-login">登录名<span class="fg-label__req" aria-hidden="true"></span></label>
+          <input class="fg-input fg-mono" id="acc-login" name="login_name" maxlength="32" required
+                 autocomplete="off" spellcheck="false" translate="no"
+                 pattern="[a-z][a-z0-9_.-]{2,31}" placeholder="zhangsan">
+        </div>
+        <div class="fg-field">
+          <label class="fg-label" for="acc-name">姓名<span class="fg-label__req" aria-hidden="true"></span></label>
+          <input class="fg-input" id="acc-name" name="display_name" maxlength="32" required
+                 autocomplete="off" placeholder="张三">
+        </div>
+        <div class="fg-field">
+          <label class="fg-label" for="acc-role">角色<span class="fg-label__req" aria-hidden="true"></span></label>
+          <select class="fg-select" id="acc-role" name="role" required autocomplete="off" data-role-select>
+            <option value="nurse">值班护士</option>
+            <option value="head_nurse">护士长</option>
+            <option value="admin">信息科管理员</option>
+          </select>
+        </div>
+        <div class="fg-field">
+          <label class="fg-label" for="acc-ward">所属病区</label>
+          <select class="fg-select" id="acc-ward" name="ward_id" autocomplete="off" data-ward-select>
+            {#- ⚠️ 占位文案必须短：抽屉里这个下拉只有 ~194px，
+                「（信息科管理员不绑病区）」12 个全角字会被截成「（信息科管理员不绑病[…」。 -#}
+            <option value="">（不选病区）</option>
+            {% for w in ward_list %}
+            <option value="{{ w.ward_id }}">{{ w.ward_name }}</option>
+            {% endfor %}
+          </select>
+          <p class="fg-hint">选护士长或护士时必须挑病区；信息科管理员留空。</p>
+        </div>
+      </div>
+      <div class="fg-error-text fg-mt-3" data-form-error aria-live="polite" hidden></div>
+    </div>
+    <div class="fg-panel__foot">
+      <button type="submit" class="fg-btn fg-btn--primary">创建账号</button>
+      <button type="button" class="fg-btn fg-btn--ghost" data-drawer-close>取消</button>
+    </div>
+  </form>
+</section>
+
+{#- 角色 → 病区联动：选「信息科管理员」时病区没有意义（DB 的 ck_user_ward_by_role
+    要求 admin 必须无病区），禁掉并清空，免得填了才发现被后端 422 挡回来。
+    ⚠️ 作用域限定在这个表单里（页面上还有一张编辑身份表单用同名 data-* 标记，
+       用 document.querySelector 会抓错那张）。 -#}
+<script>
+(function () {
+  var form = document.querySelector('[data-acc-new-form]');
+  if (!form) return;
+  var role = form.querySelector('[data-role-select]');
+  var ward = form.querySelector('[data-ward-select]');
+  if (!role || !ward) return;
+  function sync() {
+    var isAdmin = role.value === 'admin';
+    ward.disabled = isAdmin;
+    if (isAdmin) ward.value = '';
+  }
+  role.addEventListener('change', sync);
+  sync();
+})();
+</script>

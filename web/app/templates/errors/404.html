@@ -1,0 +1,35 @@
+{# ==========================================================================
+   404 页面或事件不存在
+   注意：跨病区访问事件也返回 404（不泄露「存在但无权」）。
+   上下文：user（可选）、error_message（可选）
+   ========================================================================== #}
+{% from "_macros.html" import icon %}
+{% set role = user.role if user is defined and user else '' %}
+{#- 落地页与 deps.home_for() 同口径：管理员回 /admin/overview，回 /nurse/today 会再 404/403 一次 -#}
+{% set home = home_for(role) if role else '/login' %}
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>页面不存在 · 衡护 HENGUARD</title>
+  <link rel="stylesheet" href="/static/tokens.css">
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  <main class="fg-errorpage">
+    <div class="fg-errorpage__card">
+      <div class="fg-errorpage__brand">{{ icon('logo', 24) }}衡护 HENGUARD</div>
+      <div class="fg-errorpage__code">404</div>
+      <h1 class="fg-errorpage__title">页面或事件不存在</h1>
+      <p class="fg-errorpage__desc">
+        {{ error_message if error_message is defined and error_message else '链接可能已失效，或该事件不属于你的病区。请从工作台重新进入。' }}
+      </p>
+      <div class="fg-errorpage__actions">
+        <a class="fg-btn fg-btn--primary" href="{{ home }}">返回工作台</a>
+        {% if role %}<a class="fg-btn fg-btn--secondary" href="/alerts">去告警中心</a>{% endif %}
+      </div>
+    </div>
+  </main>
+</body>
+</html>

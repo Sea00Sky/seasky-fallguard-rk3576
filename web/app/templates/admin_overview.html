@@ -1,0 +1,324 @@
+{# ==========================================================================
+   信息科管理端 · 系统总览 /admin/overview（P11，2026-11-01；2026-11-05 第92轮改版）
+
+   边界：这里**只做基础设施**——设备、数据库、吞吐、系统健康。
+   不展示任何病人事件内容与临床统计（点位、级别、处置、姓名一个都不出现）。
+
+   第92轮演进：
+     初版 = 一行摘要 + 8 列设备表 + 三行长 note（表里 5 列与 /admin/devices 重复）；
+     一改 = 待办驱动运维台（KPI → 需要处理 ‖ 健康墙 → 吞吐 ‖ 最近操作 → 健康条）；
+     二改 = 删页头大标题与「最近操作」、健康条收进 4 栏、全页间距收紧一档；
+     三改 = 用户：「需要处理」是推断出来的事，不如放真实信息 ⇒
+            设备实况表（8 栏，fg.device 字段 + 心跳 last_status 原样展示）
+            ‖ 数据库实况（4 栏，count(*) 与 pg_total_relation_size 原样展示）；
+     四改 = 用户：监控核心服务 CPU/内存 + 板端数据 ⇒ 系统健康面板并入整机三项 +
+            4 个 systemd 服务（cgroup v2 采样）；设备名下方显示板端心跳里的
+            CPU/内存/温度（新固件才有的字段，老固件不显示）。
+     五改 = 用户（2026-11-06）：副文案只留「信息科看了能做什么」的，其余删净 ——
+            KPI 副标题只剩单位「条」；四个面板头只留标题（台数计数在 KPI 里已有）。
+     六改 = 用户（2026-11-06）：KPI 卡**统一压成两行**（标签 + 数值）——
+            ① 删「共 N 台 · N 启用」（台数/启用数在设备实况表里逐台都能看见）；
+            ② 「条」从第三行挪到数字后面当单位（`unit=`）⇒ 五个框等高、不再有卡多一行。
+     七改 = 用户（2026-11-06）：设备实况在「病区」后加「点位」列。
+            ⚠️ 连带把「病区」的口径改对：**病区只认绑定的点位**，不再印 d.ward_id。
+            d.ward_id 是登记/权限字段（按病区筛设备用它），不是位置 —— 旧版直接印它，
+            于是 P12-DRILL-01（ward_id=4F-A、点位 NULL）在首页显示「心血管内科」，
+            用户看到的第一反应就是「我没绑点位，怎么会有病区」。
+            没绑点位 = 没有位置 ⇒ 病区「—」、点位「未绑定」，不回落任何副本
+            （与 attribution.py「没有绑定点位的设备没有位置」同一口径）。
+     八改（同日）：**整块删掉「数据库实况」** —— 用户「这部分功能整体去掉」；
+            改成一屏布局（≥1280 生效）：页面不滚，长清单在**模块内**滚。
+            右列 = 系统健康**跨第 2–3 行**（12 行清单要一眼看完），
+            左列 = 设备实况（表内滚 + 表头 sticky）/ 24h 吞吐。
+   现在三段：KPI×5 → 设备实况 ‖ 系统健康（跨两行） → 24h 吞吐（左列第三格）。
+
+   上下文：dev_total/dev_active/dev_online、user_total/user_locked/user_must_change、
+           device_list[]（point_name/point_ward_name/fps/last_seen_ip/
+           last_policy_rev/tele_text/policy_state）、
+           fact_total、hourly[{hour,count}]、today_events、
+           health{db,schema,disk_free_gb,sse_conns}、
+           sysmon{system{cpu_text,mem_text,load_text},services[]}、
+           strategy_applied/strategy_total、as_of
+
+   ⚠️ 每个面板各自是一个 data-refresh-region：app.js 的 swapRegions 是**整体
+      replaceWith**，所以 region 必须套在 <section> 上、且各自包含面板头，
+      否则自动刷新一次，面板头就没了。
+   ⚠️ 倒计时计数元素**不能放进任何 region**（换 DOM 会把倒计时清零 —— 旧版踩过），
+      页头删掉后它改放在内容区最前面、视觉隐藏（见下），仍在任何 region 之外。
+   ========================================================================== #}
+{% extends "base.html" %}
+{% from "_macros.html" import kpi_card, fmt_iso_time, iso, empty_state %}
+
+{% block title %}系统总览 · 衡护 HENGUARD{% endblock %}
+{% block page_key %}admin-overview{% endblock %}
+{#- V2：本页已迁移到浅色 V2 主题（2026-11-05 第92轮，信息科四页一起搬） -#}
+{% block html_theme %}v2{% endblock %}
+{% block theme_color %}#F4F6F4{% endblock %}
+{#- 2026-11-05 二改（用户要求）：「系统总览」大标题与副标题整块删掉，
+    与 /alerts 同一处理 —— 标题搬进 sr-only，页头压成瘦条，把首屏高度让给 KPI 与待办。 -#}
+{% block page_title %}<span class="fg-sr-only">系统总览</span>{% endblock %}
+{% block page_head_class %} fg-page-head--slim{% endblock %}
+{% block page_subtitle %}{% endblock %}
+
+{% block content %}
+{% set device_list = device_list if device_list is defined and device_list else [] %}
+{% set hours = hourly if hourly is defined and hourly else [] %}
+{% set sm = sysmon if sysmon is defined and sysmon else
+             {'system': {'cpu_text': '—', 'mem_text': '—', 'load_text': '—'}, 'services': []} %}
+{% set h = health if health is defined and health else {} %}
+{% set account_bad = (user_locked or 0) + (user_must_change or 0) %}
+{% set hour_total = hours | sum(attribute='count') %}
+
+{#- 自动刷新节拍器：页头删掉后倒计时没有地方挂了，但 data-refresh-every 必须在，
+    否则整页不再自动刷新；且**不能放进任何 region**（换 DOM 会把节拍器一起换掉）。
+    sr-only 是 position:absolute，不占 .fg-content 的栅格。 -#}
+<span class="fg-sr-only" data-refresh-every="30" data-next-refresh="">
+  <span data-refresh-count>30</span>
+</span>
+
+{# ---------- 5 KPI ----------
+   与护士长总览一样**不可点**：卡片是读数的地方（护士长那边去掉卡片跳转的原话是
+   「看着像按钮、点进去又是另一页」）。
+   ⚠️ 六改后本排卡**默认都是两行**（标签 + 数值），副文案只在真有话说时才出现
+      （策略未下发、账号真异常）—— 那两种是空态/异常态，多一行是有信息量的。 -#}
+<div class="fg-kpis fg-kpis--5" data-refresh-region="admin-kpi">
+  {#- 六改：「共 7 台 · 7 启用」删。台数与启用数在「设备实况」表里逐台都看得见，
+      在这个数旁边再复述一遍是凑字（用户点名）。 -#}
+  {{ kpi_card('在线设备', dev_online) }}
+
+  {#- 三改：原来的「待处理事项」换掉了 —— 待办是推断，这里是 pg 里的真实行数。 -#}
+  {#- 五改：「云端累计落库」这类复述标签本身的文案删净。
+      六改：「条」不再单占一行，改成数字后面的单位（窄卡里 48px 数字 + 20px 单位
+      仍然一行放得下；`.fg-kpi__unit` 自带 margin-left 与三级灰）。 -#}
+  {{ kpi_card('累计事件', fact_total, unit='条') }}
+
+  {% if strategy_total %}
+    {#- 五改：原副标题「已下发判定策略的设备」= 把标签换个说法，删；数字 3/3 自己会说话。 -#}
+    {{ kpi_card('策略已生效', strategy_applied ~ '/' ~ strategy_total) }}
+  {% else %}
+    {{ kpi_card('策略已生效', none, '尚未下发任何判定策略') }}
+  {% endif %}
+
+  {#- ⚠️ 这个数是**管道吞吐**（云端落库了多少条上报），不是告警数；板子在推、这里一直 0 ⇒ 链路断了。
+      五改把口径句从界面删掉了（用户：没必要）⇒ **这层含义现在只活在这条注释里**。 -#}
+  {{ kpi_card('今日接入', today_events, unit='条') }}
+
+  {#- 五改：无异常时不再写「共 N 个账号 · 无异常」（9 和「异常 0」没有关系，读起来像凑字），
+      只有真异常才给拆分（锁几个、几个待改密）—— 那才是要动手的信息。 -#}
+  {{ kpi_card('账号异常', account_bad,
+         '' if not account_bad
+         else ('锁定 ' ~ user_locked ~ ' · 待改密 ' ~ user_must_change)) }}
+</div>
+
+{# ---------- 设备实况 ----------
+   三改：不再做「该不该处理」的推断，只把 fg.device 与板端心跳里的原值摊开。
+   列 = 设备 / 病区 / 点位 / 状态 / 最后心跳 / IP / fps / 策略 rev；其中
+   **病区与点位都来自「绑定了这台设备的那个点位」**（七改），不是设备登记栏；
+   fps 来自 last_status（板端自报），从未上报过的设备就是「—」，不补 0、不猜。
+   排序在服务端做：不活（离线/停用）的排最前 —— 扫一眼就知道哪台不对。
+   点设备名进 /admin/devices 编辑（与旧健康墙的落点一致）。
+   八改：本面板 `fg-panel--fill` —— 设备一多就**在表格里滚**，表头 sticky，
+   页面本身不滚（一屏布局）；否则第 9 台开始就把 24h 图挤出屏幕。 -#}
+<section class="fg-panel fg-col-8 fg-panel--fill" data-refresh-region="admin-devices">
+  <div class="fg-panel__head">
+    <h2 class="fg-panel__title">设备实况</h2>
+    {#- 五改：「N 台 · 不活的排最前」删。台数 KPI「在线设备」里已有；排序规则不必写在界面上。 -#}
+  </div>
+  {% if device_list %}
+  <div class="fg-panel__body fg-panel__body--flush">
+    <div class="fg-table-wrap">
+      <table class="fg-table">
+        <thead>
+          <tr>
+            {#- ⚠️ 八个列头都要 scope="col"：第 96 轮五改/六改重写这张表时漏了，
+                  2026-11-07 账号页回归跑 `_verify_admin_ui_srv.py` 抓出来（那是它的断言）。 -#}
+            <th scope="col">设备</th><th scope="col">病区</th><th scope="col">点位</th>
+            <th scope="col">状态</th><th scope="col">最后心跳</th><th scope="col">IP</th>
+            <th scope="col" class="fg-text-right">fps</th>
+            <th scope="col" class="fg-text-right">策略 rev</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for d in device_list %}
+          <tr>
+            <td>
+              <a href="/admin/devices?edit={{ d.device_id }}">{{ d.device_name }}</a>
+              {#- 设备名清空后（第94轮七改：device_name 全为 NULL）主名就是设备码，
+                  第二行再印一遍同样的字符串 = 纯重复 ⇒ 只有两者不同才画第二行。 -#}
+              {% if d.device_code != d.device_name %}
+              <div class="fg-devcell__code fg-mono" translate="no">{{ d.device_code }}</div>
+              {% endif %}
+              {#- 板端遥测：新固件心跳里的 CPU/内存/温度；老固件没有这些键 ⇒ 不渲染这一行。 -#}
+              {% if d.tele_text %}
+              <div class="fg-devcell__tele" title="{{ d.tele_title }}">{{ d.tele_text }}</div>
+              {% endif %}
+            </td>
+            {#- 七改：病区 / 点位都读**绑定了这台设备的那个点位**；没绑 = 没有位置。
+                不回落 d.ward_id —— 它是登记/权限字段，拿它当位置就会印出
+                「没绑点位却有病区」这种行（P12-DRILL-01 就是这么来的）。 -#}
+            <td>
+              {%- if d.point_ward_name -%}{{ d.point_ward_name }}
+              {%- else -%}<span class="fg-muted" title="这台设备没有绑定任何点位；位置由绑定的点位决定">—</span>{%- endif -%}
+            </td>
+            <td>
+              {%- if d.point_name -%}{{ d.point_name }}
+              {%- else -%}<span class="fg-muted">未绑定</span>{%- endif -%}
+            </td>
+            <td>
+              <span class="fg-tag {% if not d.is_active %}fg-tag--retracted{% elif d.online %}fg-tag--confirmed{% else %}fg-tag--pending{% endif %}">
+                {%- if not d.is_active -%}停用
+                {%- elif d.online -%}在线
+                {%- else -%}离线{%- endif -%}
+              </span>
+            </td>
+            <td>
+              {%- if d.last_seen_at -%}
+              <span data-relative-time="{{ iso(d.last_seen_at) }}">{{ fmt_iso_time(d.last_seen_at) }}</span>
+              {%- else -%}<span class="fg-muted">从未上报</span>{%- endif -%}
+            </td>
+            <td class="fg-mono" translate="no">{{ d.last_seen_ip or '—' }}</td>
+            {#- 离线时 fps 是**最后一次上报**的旧值，不是此刻的实时值 —— 用 title 说清楚，
+                否则「离线 · fps 27.6」看起来像设备还在跑。 -#}
+            <td class="num" title="{{ '设备实时上报' if d.online else '最后一次上报（设备当前不在线）' }}">
+              {%- if d.fps is not none %}{{ '%.1f'|format(d.fps) }}{% else %}—{% endif -%}
+            </td>
+            <td class="num">{{ d.last_policy_rev if d.last_policy_rev is not none else '—' }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% else %}
+  <div class="fg-panel__body">
+    {{ empty_state('尚未登记任何设备',
+                   '在「设备与策略」里新增设备后，这里会出现它的真实状态。',
+                   '去登记设备', '/admin/devices', 'device') }}
+  </div>
+  {% endif %}
+</section>
+
+{# ---------- 数据库实况（八改已整块删除，2026-11-06） ----------
+   用户：「数据库实况这部分的功能整体去掉吧，把系统健康和 24 小时往上提」。
+   count(*)/表大小/最近写入/今日审计全下线 ⇒ 后端也不再查（db_* 四个 ctx 键已删）。
+   墓碑留着是为了解释两件事：① 「今日审计」这个数现在只有审计页有；
+   ② 系统健康里「数据库 / 库结构」两行仍然在 —— 那两行不是这个面板的残留。 -#}
+
+{# ---------- 系统健康（含核心服务资源） ----------
+   二改：从底部整行（fg-col-12）提到 4 栏。
+   八改：数据库实况删掉后**升到设备实况右侧，并跨第 2–3 行**（`fg-panel--tall`）——
+        12 行清单（2 项健康 + 3 项整机 + 核心服务 4 个 + 磁盘/连接）要一眼看完；
+        挤在半屏里就得滚，而滚到看不见「核心服务未运行」就失去了这块的意义。
+   四改（用户要求）：并入核心服务的 CPU/内存 —— 整机三项 + 4 个 systemd 服务。
+   数据由 `app/sysmon.py` 后台 5 秒采一次（cgroup v2 + /proc，不装 psutil、不要 root），
+   页面只读缓存；CPU% 是两次采样的差，单次读数没有意义。
+   与 /healthz 同一份快照（`_health_snapshot()`）：真出故障时首页和探针说同一句话。
+   ⚠️ 4 栏窄面板 ⇒ fg-freshbar--stack「键左值右」清单。
+   ⚠️ 八改起本面板 `fg-panel--fill`：内容再多也在面板内部滚，不把整页顶长
+      （一屏布局的前提；见 app.css 的 @media min-width:1280 块）。
+   ⚠️ 「数据库 / 库结构」两行**不是**被删掉的那个数据库面板的残留：那是健康检查。 -#}
+<section class="fg-panel fg-col-4 fg-panel--fill fg-panel--tall" data-refresh-region="admin-health">
+  <div class="fg-panel__head">
+    <h2 class="fg-panel__title">系统健康</h2>
+    {#- 五改：「同 /healthz 口径」删。这是实现细节，信息科看了也不知道该做什么；
+        真出故障时两边说同一句话这件事仍然成立（同一份 _health_snapshot()）。 -#}
+  </div>
+  <div class="fg-panel__body">
+    <div class="fg-freshbar fg-freshbar--stack">
+      <span class="fg-freshbar__item">
+        <span class="fg-freshbar__k">数据库</span>
+        <span class="fg-freshbar__v {% if h.db != 'ok' %}is-danger{% endif %}">
+          {{- '正常' if h.db == 'ok' else '异常' -}}
+        </span>
+      </span>
+      {#- 异常原文（`fail: ProgrammingError`）不进界面：那是 /healthz 给运维脚本看的，
+          这里写清楚「该去跑补丁了」比印一个英文异常名有用。 -#}
+      <span class="fg-freshbar__item">
+        <span class="fg-freshbar__k">库结构</span>
+        <span class="fg-freshbar__v {% if h.schema not in (none, 'ok') %}is-danger{% endif %}">
+          {%- if h.schema is none -%}未知
+          {%- elif h.schema == 'ok' -%}完整
+          {%- else -%}缺补丁{%- endif -%}
+        </span>
+      </span>
+
+      {#- 整机资源：/proc 采样，5 秒一次；CPU% 是两次采样的差 -#}
+      <span class="fg-freshbar__item">
+        <span class="fg-freshbar__k">整机 CPU</span>
+        <span class="fg-freshbar__v">{{ sm.system.cpu_text }}</span>
+      </span>
+      <span class="fg-freshbar__item">
+        <span class="fg-freshbar__k">整机内存</span>
+        <span class="fg-freshbar__v">{{ sm.system.mem_text }}</span>
+      </span>
+      <span class="fg-freshbar__item" title="1 / 5 / 15 分钟平均负载">
+        <span class="fg-freshbar__k">系统负载</span>
+        <span class="fg-freshbar__v">{{ sm.system.load_text }}</span>
+      </span>
+
+      {#- 服务清单在启动最初的一两秒还是空的（snapshot() 会顺手拉起采样线程）——
+          空的时候连分组标题一起不渲染，否则会留一个孤零零的「核心服务」。 -#}
+      {% if sm.services %}
+      <span class="fg-freshbar__item fg-freshbar__item--group">
+        <span class="fg-freshbar__k">核心服务</span>
+      </span>
+      {% endif %}
+      {% for s in sm.services %}
+      <span class="fg-freshbar__item" title="{{ s.title }}">
+        <span class="fg-freshbar__k">{{ s.label }}</span>
+        <span class="fg-freshbar__v {% if not s.ok %}is-danger{% endif %}">
+          {%- if s.ok %}{{ s.cpu_text }} · {{ s.mem_text }}{% else %}未运行{% endif -%}
+        </span>
+      </span>
+      {% endfor %}
+
+      <span class="fg-freshbar__item">
+        <span class="fg-freshbar__k">磁盘剩余</span>
+        <span class="fg-freshbar__v">{% if h.disk_free_gb is not none %}{{ h.disk_free_gb }} GB{% else %}—{% endif %}</span>
+      </span>
+      <span class="fg-freshbar__item">
+        <span class="fg-freshbar__k">实时连接</span>
+        <span class="fg-freshbar__v">{% if h.sse_conns is not none %}{{ h.sse_conns }} 个{% else %}—{% endif %}</span>
+      </span>
+    </div>
+  </div>
+</section>
+
+{# ---------- 24 小时接入吞吐 ----------
+   与护士长总览那张 24h 图**不是同一个口径**：那边数的是告警（ever_confirmed，
+   含级别），这边数的是落库行数（管道流量）。标题写「接入吞吐」就是为了不让人
+   把这两个数拿去对账。
+   八改：数据库实况删掉后升到左列第三格（chart 8 栏），右列整根给系统健康。 -#}
+<section class="fg-panel fg-col-8" data-refresh-region="admin-throughput">
+  <div class="fg-panel__head">
+    <h2 class="fg-panel__title">24 小时接入吞吐</h2>
+    {#- 五改：口径子句「按云端落库时间 · 单位：条 · 不含点位与级别」删净。
+        ⚠️ 这道口径仍然成立（与护士长那张 24h 告警图**不同源**，见本段头注释），
+        只是不再写在界面上 —— 标题里的「接入吞吐」三个字就是用来分开两个数的。 -#}
+  </div>
+  <div class="fg-panel__body">
+    {% if hour_total %}
+      {% set ns = namespace(max_count=0) %}
+      {% for item in hours %}
+        {% if item.count > ns.max_count %}{% set ns.max_count = item.count %}{% endif %}
+      {% endfor %}
+      <div class="fg-bars" role="img" aria-label="24 小时接入吞吐柱状图">
+        {% for item in hours %}
+        <div class="fg-bars__col" title="{{ '%02d'|format(item.hour) }}:00 · {{ item.count }} 条">
+          <div class="fg-bars__bar" data-count="{{ item.count }}"
+               style="height: {{ '%.1f'|format((item.count / ns.max_count * 100) if ns.max_count else 0) }}%"></div>
+        </div>
+        {% endfor %}
+      </div>
+      <div class="fg-bars__axis">
+        <span>00:00</span><span>06:00</span><span>12:00</span><span>18:00</span><span>24:00</span>
+      </div>
+    {% else %}
+      {{ empty_state('今日还没有接入数据',
+                     '设备一有事件上报就会出现柱子；一直空着，说明设备没在推。',
+                     '', '', 'activity') }}
+    {% endif %}
+  </div>
+</section>
+
+{% endblock %}

@@ -1,0 +1,14 @@
+[Unit]
+Description=FallGuard edge gateway (shared-memory events, SQLite, HTTP API)
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/fallguard-gateway --config /etc/fallguard/config.json
+WorkingDirectory=/etc/fallguard
+Restart=always
+RestartSec=3
+User=root
+
+[Install]
+WantedBy=multi-user.target

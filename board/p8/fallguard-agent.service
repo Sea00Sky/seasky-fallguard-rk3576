@@ -1,0 +1,24 @@
+[Unit]
+# 配置代理：长轮询云端配置 → 写 runtime/multi.env → 重启检测
+#
+# 本 unit 不能加 `NoNewPrivileges=yes`：agent 要用 sudo 重启
+# fallguard-sensor-multi（窄 sudoers 见 /etc/sudoers.d/fallguard-agent）。
+# 与 sensor-multi 是两个进程：agent 挂了不影响检测，检测挂了 agent 继续跑。
+Description=FallGuard config agent (long-poll cloud config)
+After=network.target
+
+[Service]
+Type=simple
+User=fallguard
+Group=fallguard
+WorkingDirectory=/opt/fallguard/board
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/usr/bin/python3 scripts/config_agent.py
+
+# 云端暂时不可达时 agent 自己退避；进程崩了 10 秒后拉起
+Restart=always
+RestartSec=10
+TimeoutStopSec=10
+
+[Install]
+WantedBy=multi-user.target

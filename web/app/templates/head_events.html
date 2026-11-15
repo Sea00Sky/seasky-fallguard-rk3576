@@ -1,0 +1,231 @@
+{# ==========================================================================
+   护士长事件台账 /head/events
+   结构：筛选栏 + 表格 + 分页 + 导出 CSV
+   行序（2026-11-04 用户「排列顺序按处置态的级别排序」）：
+     处置态（待接警→已接警→已到场→已闭环）→ 级别（S1→S2→S3）→ 时间倒序，
+     即 main.py 的 ORDER_DISPOSITION，与告警中心/处置记录同一套。
+   上下文：events[]、total、page、size、filters{disposition,detection,severity,device,from,to,q,outcome,sort}
+          devices[]、counts（可选）
+   ========================================================================== #}
+{% extends "base.html" %}
+{% from "_macros.html" import icon, sev_tag, detection_tag, disposition_tag, fmt_time, event_ref, row_actions, empty_state, pager %}
+
+{% block title %}事件台账 · 衡护 HENGUARD{% endblock %}
+{% block page_key %}head-events{% endblock %}
+{#- 2026-11-04 用户：「未选日期时为全时段…」那句删掉；导出按钮搬到
+    「共 N 条 · 已闭环的行可以直接重开」后面、筛选上面。
+    副标题删掉后页头只剩一个和面板头重复的「事件台账」—— 一并收成瘦页头
+    （标题只留读屏），与 /alerts、/nurse/history、病区画面同一套。 -#}
+{% block page_title %}<span class="fg-sr-only">事件台账</span>{% endblock %}
+{% block page_head_class %} fg-page-head--slim{% endblock %}
+
+{% set event_list = events if events is defined and events else [] %}
+{% set device_list = devices if devices is defined and devices else [] %}
+{% set point_list = points if points is defined and points else [] %}
+{% set f = filters if filters is defined and filters else {} %}
+{% set cur_disp = f.disposition if f.disposition is defined and f.disposition else '' %}
+{% set cur_detection = f.detection if f.detection is defined and f.detection else '' %}
+{% set cur_test = f.test if f.test is defined and f.test else '' %}
+{% set cur_severity = f.severity if f.severity is defined and f.severity else '' %}
+{% set cur_device = f.device if f.device is defined and f.device else '' %}
+{% set cur_point = f.point if f.point is defined and f.point else '' %}
+{% set cur_from = f.from if f.from is defined and f.from else '' %}
+{% set cur_to = f.to if f.to is defined and f.to else '' %}
+{% set cur_q = f.q if f.q is defined and f.q else '' %}
+{% set cur_assignee = f.assignee if f.assignee is defined and f.assignee else '' %}
+{% set assignee_list = assignees if assignees is defined and assignees else [] %}
+{% set page_no = page if page is defined and page else 1 %}
+{% set page_size = size if size is defined and size else 50 %}
+{% set total_count = total if total is defined and total is not none else event_list|length %}
+
+{% block content %}
+{#- 导出链接：只转发导出接口真正认识的筛选参数。原来把 request.url.query 整串拼进去，
+    page/size/sort 也会跟着走（接口忽略它们，但 URL 会误导读者以为导的是「这一页」）。
+    按钮名写清范围：导的是当前筛选结果，不是看得见的这 50 条，也不是整张表。
+    2026-11-04：随按钮一起从页头搬进面板头，并补上 assignee。 -#}
+{% set _export_keys = ['disposition', 'detection', 'severity', 'device', 'point', 'from', 'to', 'q', 'outcome', 'test', 'assignee'] %}
+{#- 必须用 namespace：Jinja 的 {% set %} 在 for 循环体里每次迭代都会重绑，
+    用 _qs = _qs + [...] 这种写法循环结束后拿到的是空列表——筛选条件会被静默丢掉。 -#}
+{% set _ns = namespace(qs=[]) %}
+{% for _k in _export_keys %}
+  {% if request.query_params.get(_k) %}
+    {% set _ns.qs = _ns.qs + [_k ~ '=' ~ (request.query_params.get(_k)|urlencode)] %}
+  {% endif %}
+{% endfor %}
+
+<div class="fg-col-12" data-refresh-region="ledger-main">
+  <section class="fg-panel">
+  <div class="fg-panel__head">
+    <h2 class="fg-panel__title">事件台账</h2>
+    {#- 2026-11-04 用户：标题后那句「共 N 条 · 已闭环的行可以直接重开」删掉。
+        条数不丢：面板脚的分页器本来就在写「共 N 条事件」。 -#}
+    {#- 2026-11-04 用户：导出按钮挪到这句后面、筛选上面。放面板头里而不是 form 里：
+        它是 <a>，混进筛选表单会和「筛选」按钮抢同一行。 -#}
+    <div class="fg-panel__actions">
+      <a class="fg-btn fg-btn--primary fg-btn--sm"
+         href="/api/v1/export/events.csv{% if _ns.qs %}?{{ _ns.qs|join('&')|e }}{% endif %}">
+        {{ icon('download', 16) }}导出当前筛选 CSV
+      </a>
+    </div>
+  </div>
+
+  <form class="fg-filters" method="get" action="/head/events" role="search">
+    {% if f.outcome is defined and f.outcome %}
+    <input type="hidden" name="outcome" value="{{ f.outcome }}">
+    {% endif %}
+    {% if f.sort is defined and f.sort %}
+    <input type="hidden" name="sort" value="{{ f.sort }}">
+    {% endif %}
+    {% if cur_test is defined and cur_test %}
+    <input type="hidden" name="test" value="{{ cur_test }}">
+    {% endif %}
+    <div class="fg-field">
+      <label class="fg-label" for="ledger-disp">处置态</label>
+      <select class="fg-select" id="ledger-disp" name="disposition">
+        <option value="">全部</option>
+        <option value="PENDING" {% if cur_disp == 'PENDING' %}selected{% endif %}>待接警</option>
+        <option value="ACKED" {% if cur_disp == 'ACKED' %}selected{% endif %}>已接警</option>
+        <option value="ON_SCENE" {% if cur_disp == 'ON_SCENE' %}selected{% endif %}>已到场</option>
+        <option value="RESOLVED" {% if cur_disp == 'RESOLVED' %}selected{% endif %}>已处置</option>
+        <option value="FALSE_ALARM" {% if cur_disp == 'FALSE_ALARM' %}selected{% endif %}>误报</option>
+        <option value="CLOSED" {% if cur_disp == 'CLOSED' %}selected{% endif %}>已归档</option>
+      </select>
+    </div>
+
+    {#- 处置人筛选（2026-11-04 用户要求）。候选只列本病区**处置过事件**的人
+        （见 main.py 的 _assignee_list）；值走 ?assignee=<user_id>，
+        与 /api/v1/events、导出的同名参数一致，导出按钮也会把它带上。 -#}
+    <div class="fg-field">
+      <label class="fg-label" for="ledger-assignee">处置人</label>
+      <select class="fg-select" id="ledger-assignee" name="assignee">
+        <option value="">全部</option>
+        {% for a in assignee_list %}
+        <option value="{{ a.user_id }}" {% if cur_assignee == a.user_id|string %}selected{% endif %}>{{ a.display_name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="fg-field">
+      <label class="fg-label" for="ledger-detection">检测态</label>
+      <select class="fg-select" id="ledger-detection" name="detection">
+        <option value="">全部</option>
+        <option value="CONFIRMED" {% if cur_detection == 'CONFIRMED' %}selected{% endif %}>已确认</option>
+        <option value="EVER" {% if cur_detection == 'EVER' %}selected{% endif %}>曾经确认（含已撤回）</option>
+        <option value="RETRACTED" {% if cur_detection == 'RETRACTED' %}selected{% endif %}>模型已撤回</option>
+      </select>
+    </div>
+
+    <div class="fg-field">
+      <label class="fg-label" for="ledger-severity">级别</label>
+      <select class="fg-select" id="ledger-severity" name="severity">
+        <option value="">全部</option>
+        <option value="S1" {% if cur_severity == 'S1' %}selected{% endif %}>S1 紧急</option>
+        <option value="S2" {% if cur_severity == 'S2' %}selected{% endif %}>S2 重要</option>
+        <option value="S3" {% if cur_severity == 'S3' %}selected{% endif %}>S3 提示</option>
+      </select>
+    </div>
+
+    {#- 与 /alerts 同步（2026-11-03）：点位下拉列点位，不列设备。 -#}
+    <div class="fg-field">
+      <label class="fg-label" for="ledger-point">点位</label>
+      <select class="fg-select" id="ledger-point" name="point">
+        <option value="">全部</option>
+        {% for p in point_list %}
+        <option value="{{ p.light_key }}" {% if cur_point == p.light_key %}selected{% endif %}>
+          {{ p.name }}{% if not p.stream_path %}（未配置摄像头）{% elif not p.is_active %}（已停用）{% endif %}
+        </option>
+        {% endfor %}
+      </select>
+      {% if cur_device and not cur_point %}<input type="hidden" name="device" value="{{ cur_device }}">{% endif %}
+      {% if cur_device and not cur_point %}
+      <span class="fg-hint">当前按设备 {{ cur_device }} 筛选（旧链接）；选择点位后自动解除。</span>
+      {% endif %}
+    </div>
+
+    <div class="fg-field">
+      <label class="fg-label" for="ledger-from">起始日期</label>
+      <input class="fg-input" type="date" id="ledger-from" name="from" value="{{ cur_from }}">
+    </div>
+
+    <div class="fg-field">
+      <label class="fg-label" for="ledger-to">截止日期</label>
+      <input class="fg-input" type="date" id="ledger-to" name="to" value="{{ cur_to }}">
+    </div>
+
+    <div class="fg-field fg-field--grow">
+      <label class="fg-label" for="ledger-q">搜索事件号前 8 位 / 点位</label>
+      <input class="fg-input" type="search" id="ledger-q" name="q" value="{{ cur_q }}"
+             placeholder="事件号前 8 位 / 点位">
+    </div>
+
+    <div class="fg-field">
+      <span class="fg-label" aria-hidden="true">&nbsp;</span>
+      <div class="fg-btn-group">
+        <button type="submit" class="fg-btn fg-btn--secondary">筛选</button>
+        <a class="fg-btn fg-btn--ghost" href="/head/events">清除筛选</a>
+      </div>
+    </div>
+  </form>
+
+  {# ---------- 表格 ----------
+     列序与告警中心一致：时间 → 点位 → 级别 → 检测态 → 处置态 →（处置人）→ 操作。
+     台账多一列事件号（这里是留痕页，事件号是第一身份），放在最前。 #}
+  <div class="fg-panel__body fg-panel__body--flush">
+    <div class="fg-table-wrap">
+      <table class="fg-table">
+        <thead>
+          <tr>
+            <th scope="col">事件号</th>
+            <th scope="col">时间</th>
+            <th scope="col">点位</th>
+            <th scope="col">级别</th>
+            <th scope="col">检测态</th>
+            <th scope="col">处置态</th>
+            <th scope="col">处置人</th>
+            <th scope="col">操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for event in event_list %}
+          <tr class="{% if event.detection_state == 'RETRACTED' and not event.ever_confirmed %}is-retracted{% endif %}"
+              data-detail-url="/head/events/{{ event.event_uid }}"
+              data-event-uid="{{ event.event_uid }}"
+              data-revision="{{ event.revision if event.revision is not none else 0 }}"
+              tabindex="0">
+            <td class="fg-table__uid" title="{{ event.event_uid }}">{{ event_ref(event.event_uid) }}</td>
+            {# 台账跨日：只给时分秒会让 12:55 → 22:31 这种跨日序列看着像乱序。
+               日期常驻，时间加粗——竖着扫一列时先认日子，再认时刻。 #}
+            <td class="fg-mono fg-nowrap fg-table__time">
+              <span class="fg-table__date">{{ fmt_time(event.received_at, '%Y-%m-%d') }}</span>
+              <span class="fg-table__hm">{{ fmt_time(event.received_at, '%H:%M:%S') }}</span>
+            </td>
+            <td class="fg-nowrap">{{ event.location or '—' }}</td>
+            <td class="fg-nowrap">{{ sev_tag(event.severity) }}</td>
+            <td class="fg-nowrap">{{ detection_tag(event.detection_state, event.ever_confirmed) }}</td>
+            <td class="fg-nowrap">{{ disposition_tag(event.disposition_state) }}</td>
+            <td class="fg-nowrap">{{ event.assignee.display_name if event.assignee is defined and event.assignee else '—' }}</td>
+            <td class="fg-nowrap">{{ row_actions(event, 'head_nurse', '/head/events') }}</td>
+          </tr>
+          {% else %}
+          <tr class="fg-table__empty">
+            <td colspan="8">
+              {{ empty_state('当前筛选下没有事件', '', '清除筛选', '/head/events', 'list') }}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="fg-panel__foot">
+    {{ pager(request, page_no, page_size, total_count, '条事件') }}
+  </div>
+  </section>
+</div>
+
+{# ---------- 行内「重开」用的页级弹窗 ----------
+   台账页没有详情抽屉，护士长点「重开」时页面上必须已经有一个可用的弹窗；
+   uid 由 app.js 按行按钮回填。id 与详情自带那份错开，避免将来加抽屉时撞车。 #}
+{% with modal_id = 'fg-reopen-modal-row' %}{% include "_reopen_modal.html" %}{% endwith %}
+{% endblock %}

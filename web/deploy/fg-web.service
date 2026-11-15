@@ -1,0 +1,59 @@
+# 衡护 HENGUARD 云端 Web —— systemd 服务单元
+# 安装：
+#   sudo cp deploy/fg-web.service /etc/systemd/system/fg-web.service
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now fg-web
+#   systemctl status fg-web
+#   journalctl -u fg-web -f
+#
+# 前置条件：
+#   /opt/fallguard/.venv          项目虚拟环境（requirements.txt 已安装）
+#   /opt/fallguard/app/main.py    应用入口（FastAPI 实例名 app）
+#   /etc/fallguard/web.env        环境变量文件（模板见 deploy/web.env.example，权限 640）
+#   /var/lib/fallguard/snapshots  快照目录（750，属主 fallguard:fallguard）
+#   /var/log/fallguard            对账等运维日志目录（属主 fallguard:fallguard）
+
+[Unit]
+Description=衡护 HENGUARD 云端 Web（FastAPI / uvicorn）
+After=network.target postgresql.service
+Wants=postgresql.service
+
+# 启动频率限制必须写在 [Unit] 段（systemd ≥ 230 起这两个键从 [Service] 迁到这里；
+# 写在 [Service] 里 systemd 会告警并忽略，起不到防崩溃循环的作用）。
+StartLimitIntervalSec=600
+StartLimitBurst=100
+
+[Service]
+Type=simple
+User=fallguard
+Group=fallguard
+WorkingDirectory=/opt/fallguard
+EnvironmentFile=/etc/fallguard/web.env
+
+# --workers 1 是硬约束：SSE 的进程内广播无法跨 worker 进程。
+# 要加 worker 必须先引入 Redis pub/sub，否则部分浏览器收不到 event.created。
+# --proxy-headers/--forwarded-allow-ips 让审计拿到真实 client_ip（nginx 在本机）。
+ExecStart=/opt/fallguard/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000 --workers 1 --proxy-headers --forwarded-allow-ips 127.0.0.1
+
+Restart=always
+RestartSec=3
+TimeoutStopSec=15
+KillSignal=SIGTERM
+
+# 日志进 journald，统一用 journalctl -u fg-web 查
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=fg-web
+
+# ── 最小权限加固 ─────────────────────────────────────────────────────
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+# 只有快照与运维日志目录可写（应用不得写代码目录）；
+# 前缀 - 表示目录暂不存在也不阻止启动（systemd ≥ 231）
+ReadWritePaths=-/var/lib/fallguard -/var/log/fallguard
+UMask=0027
+
+[Install]
+WantedBy=multi-user.target

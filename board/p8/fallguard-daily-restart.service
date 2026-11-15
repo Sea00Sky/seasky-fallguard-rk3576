@@ -1,0 +1,27 @@
+[Unit]
+# 每日低峰重启感知进程（ ，配合 Stitcher 有界化一起上）。
+# 由 `fallguard-daily-restart.timer` 触发，本身不常驻。
+#
+# 定位：这是兜底，不是修根因。根因（`src/stitch.py` 逐帧几何 + 死链重算）
+# 已经用「裁帧 + 冻结死链」修掉并逐位对拍（p8/stitch_evict_verify.py）。
+# 留着它是因为：① 还能盖住尚未发现的其它泄漏；② 一次性重置检测状态机。
+#
+# 只重启感知进程，绝不重启网关、绝不做整机重启：
+# 网关 SQLite 的 row_seq 是云端撤回匹配的精确键，重启会让它从 1 重新计数
+# （见 web/app/routes/ingest.py 里 MATCH_RETRACT_BY_SEQ_SQL 上面的注释，
+# 以及 那场「同号旧告警被静默改成 RETRACTED」）。
+# 感知进程重启只让 `person_id` 与 `window_start` 归零，落在云端
+# `RETRACT_FUZZY_WINDOW_SQL`(2 分钟) 之外 —— 日常一天一次是安全的。
+# 反过来：别把它改勤。间隔必须远大于 2 分钟（见 p8/verify_retract_window.py）。
+#
+# 与 `fallguard-sensor-assembly` 的互斥不受影响：这里只是 restart 现有 unit，
+# 不 start 另一个。
+Description=FallGuard 每日低峰重启感知进程（restart fallguard-sensor-multi）
+
+[Service]
+Type=oneshot
+# `--no-block` 是必须的：本 unit 跑在 PID 1 的子进程里再去请求 PID 1 起一个 job，
+# 阻塞等待有依赖序风险。不阻塞地踢一脚即可，成败由 timer 的下一次触发兜。
+ExecStart=/usr/bin/systemctl --no-block restart fallguard-sensor-multi.service
+# 重启要等旧的优雅退出（那个 unit 的 TimeoutStopSec=15）
+TimeoutStartSec=60

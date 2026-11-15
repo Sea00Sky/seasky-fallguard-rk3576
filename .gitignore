@@ -1,0 +1,44 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.venv_*/
+venv/
+
+# Raw data and training artifacts
+datasets/
+runs/
+calib/
+weights/
+experiments/
+videos/
+*.mp4
+*.nv12
+*.rknn
+!models/*.rknn
+
+# Build output
+*.o
+*.a
+*.so
+fallguard-gateway
+
+# Logs and local scratch
+*.log
+_tmp*
+_trash*/
+snapshot*/
+_win_out.txt
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Secrets
+.env
+*.env
+*.pem
+*.key

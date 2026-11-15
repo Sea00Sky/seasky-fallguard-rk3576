@@ -1,0 +1,323 @@
+{# ==========================================================================
+   值班护士工作台 /nurse/today
+   结构：白板（4）+ 点位灯带 + 【处置队列（主）｜工作区（右）】
+   上下文：kpi{pending, day_alerts, devices_ok, devices_total}（2026-11-03 起白板不再显示中位响应）
+          worklist[]（当前分段的行）、queue_counts{PENDING,ACKED,ON_SCENE,CLOSED}、cur_seg
+          focus_event（工作区要显示的那条）、now
+          point_rows[]（按点位聚合的状态灯，含 stream_path / pending / device_active）
+          orphan_devices[]（没挂点位的老设备，回落成旧门灯）
+
+   2026-11-02 改版（用户原话「告警流这个不合理…我接警之后不能让下一步处理的时候很难找到」）：
+   主区从「按时间倒序的告警流」换成「按处置态分段的处置队列」，右栏从「待处置队列」
+   换成「工作区」——同一屏里左边选人、右边把人一路推到闭环，接完警不用回左栏找那一行。
+   ========================================================================== #}
+{% extends "base.html" %}
+{% from "_macros.html" import doorlight, pointlight, point_qs, empty_state, sev_tag, disposition_tag, fmt_time, iso, detail_actions, icon %}
+
+{% block title %}值班工作台 · 衡护 HENGUARD{% endblock %}
+{% block page_key %}nurse-today{% endblock %}
+{#- 2026-11-03 用户：「值班工作台 5 个大字可以去掉」。
+    标题不再画在页面上（左导航已标了当前位置），但保留给读屏软件；
+    页头随之压成一条右侧工具行，把高度让给队列与工作区。 -#}
+{% block page_title %}<span class="fg-sr-only">值班工作台</span>{% endblock %}
+{% block page_head_class %} fg-page-head--slim{% endblock %}
+{#- V2：主题按页迁移。这一页已搬到浅色 V2；其余页面在各自阶段完成前仍是 V1。
+    2026-11-01 用户拍板：医院场景以浅色为主，深色降级为夜间模式候选。 -#}
+{% block html_theme %}v2{% endblock %}
+{% block theme_color %}#F4F6F4{% endblock %}
+
+{% set k = kpi if kpi is defined and kpi else {} %}
+{% set qc = queue_counts if queue_counts is defined and queue_counts else {} %}
+{% set rows = worklist if worklist is defined and worklist else [] %}
+{% set cur = cur_seg if cur_seg is defined and cur_seg else 'PENDING' %}
+{% set dev_ok = k.devices_ok if k.devices_ok is defined else none %}
+{% set dev_total = k.devices_total if k.devices_total is defined else none %}
+{% set dev_value = (dev_ok|string ~ '/' ~ dev_total|string) if dev_ok is not none and dev_total is not none else none %}
+{% set dev_sub = ('正常' if dev_ok == dev_total else '有设备离线') if dev_ok is not none and dev_total is not none else '设备状态未上报' %}
+{#- 点位筛选（2026-11-03 用户要的「灯角小按钮」，可多选）：空列表 = 没筛。
+    值是 light_key 列表；筛选条上显示点位名，名字查不到时退回显示 key。
+    cp_qs 由宏统一拼（重复的 &point= 参数），Tab / 行 / 下钻都靠它带住筛选。 -#}
+{% set cp = cur_points if cur_points is defined and cur_points else [] %}
+{% set cp_label = cur_point_label if cur_point_label is defined and cur_point_label else '' %}
+{% set cp_qs = point_qs(cp) %}
+
+{#- 四段：键名与 metrics.WORKLIST_SEGMENTS 一一对应，顺序就是护士的处理顺序。
+    「已闭环」写成「今日已闭环」：这一段按**闭环时间**截到**今天 00:00**，
+    不写清范围的话，「已闭环 0」会被读成「今天一个人都没处置」。
+    2026-11-04 前这里是「本班已闭环」（按写死的 8/16/24 点班界）——
+    班次时间是编的，整页统一改成自然日（见 main.py 的 `_day_window()`）。 -#}
+{% set segments = [
+  ('PENDING',  '待接警'),
+  ('ACKED',    '已接警'),
+  ('ON_SCENE', '已到场'),
+  ('CLOSED',   '今日已闭环')
+] %}
+
+{#- 2026-11-05：空态只留标题。原来每条还带一句「新告警会自动出现在这里。」这类
+    副标题小字，属于同义反复，用户要求删掉（只删这一类废话，不带操作指引的保留）。 -#}
+{% set seg_empty = {
+  'PENDING':  '没有待接警的事件',
+  'ACKED':    '没有已接警的事件',
+  'ON_SCENE': '没有已到场的事件',
+  'CLOSED':   '今天还没有闭环记录'
+} %}
+
+{#- 跳去告警中心时的 disposition 与时间范围。
+    2026-11-03 起队列按**今天**截（main.py 的 day_from），所以链接**不能**再带
+    `from=&to=`：那是「不限日期」的写法，点过去会翻出三个月的台账，和自己的数字打架。
+    参数缺失时 /alerts 默认就是今天，两边同一个界。
+    ⚠️ 只有「今日已闭环」这一段对不严：两边同是**今天**，但告警中心按**收到时间**筛、
+       本段按**闭环时间**截，昨天收到、今天闭环的那几条点过去看不到。
+       要修得给 /alerts 加 closed_at 筛选，目前不划算——
+       它是「去看完整列表」的入口，不是对账工具。
+    disposition 取的是**段 → 状态集合**的翻译（metrics.segment_disposition）。
+    以前这里是个从没传过的变量，渲染成空串 = 全部状态（2026-11-03 修）。 -#}
+{#- 下钻只带**单个**点位：告警中心的点位控件是单选下拉，塞多值进去它会显示其一、
+    实际筛全部 —— 那是「控件撒谎」。筛了 2 个以上就不带，让那边老实显示「全部」。
+    （要让它也支持多选就得换控件，用户 2026-11-03 明确说「只做工作台」。） -#}
+{% set go_point_qs = cp_qs if cp|length == 1 else '' %}
+{% set go_href = '/alerts?disposition=' ~ go_disposition ~ '&test=0' ~ go_point_qs %}
+
+{#- 2026-11-03 用户：「首页的顶部刷新和全部告警这两个按钮删掉」。
+    这两个入口本页都有替代：队列由 SSE / 自动刷新维持，抬头看新告警不用手动刷；
+    去告警中心走白板的「待处置」或左导航，不必在页头再放一个。 -#}
+{% block actions %}{% endblock %}
+
+{% block content %}
+{# ---------- 值班白板（三项：待处置 / 今日告警 / 设备） ----------
+   护士站墙上的白板是横着写的一行数字，不是三张卡片。
+   压成一条带子，把首屏让给队列与工作区；2026-11-03 起加高、去掉中位响应。 #}
+{#- ⚠️ 白板和下面那行「往期积压」必须包在**同一个**栅格项里。
+    它们各自成为 .fg-content 的一个格子的话，一屏布局的
+    `grid-template-rows: auto auto minmax(0,1fr)` 行模板会错位（实测那行直接塌成 0 高）。
+    包一层 div，栅格项数量就还是 3 个。 -#}
+<div class="fg-col-12 fg-wb-block" data-refresh-region="kpi-row">
+<div class="fg-whiteboard">
+  {# 数字是未闭环三态之和（metrics.UNHANDLED_STATES），链接就必须筛三态。
+     以前链接只带 PENDING：白板写 30，点进去是另一个数。
+     2026-11-03：**不带 from/to** —— 告警中心参数缺失时按「今天」算，
+     而这页的白板也改成了今天口径，两边必须是同一个界（见 main.py 的 day_from）。 #}
+  <a class="fg-wb" href="/alerts?disposition=PENDING,ACKED,ON_SCENE&test=0">
+    <span class="fg-wb__k">待处置</span>
+    <span class="fg-wb__v {% if k.pending %}is-alert{% endif %}">{{ k.pending if k.pending is defined and k.pending is not none else '—' }}</span>
+    {#- 「待处置」是一个总数，护士真正需要的是它卡在哪一段。
+        细分放副行，不额外加 KPI 卡：白板只回答「有没有事、急不急」。 -#}
+    <span class="fg-wb__s">
+      {%- if qc.PENDING or qc.ACKED or qc.ON_SCENE -%}
+      {{ qc.PENDING or 0 }} 待接警 · {{ (qc.ACKED or 0) + (qc.ON_SCENE or 0) }} 处理中
+      {%- else -%}当前无待处置{%- endif -%}
+    </span>
+  </a>
+  {#- 「今日告警」= 今天**收到**的告警（KPI 窗口 day_from…as_of）。
+      2026-11-04 前叫「本班告警」，按班次窗口算 —— 同一个「今日」白板与队列 Tab
+      差一截。链接去 /nurse/history 仍是纯 time_desc、不限日期（见 §14.23 注）。 -#}
+  <a class="fg-wb" href="/nurse/history">
+    <span class="fg-wb__k">今日告警</span>
+    <span class="fg-wb__v">{{ k.day_alerts if k.day_alerts is defined and k.day_alerts is not none else '—' }}</span>
+  </a>
+  {#- 2026-11-03 用户：「这个（中位响应）不用放到护士端」。
+      它衡量的是接警快慢，属于复盘指标，不是现场处置要看的东西；
+      护士长总览 / 个人页仍保留各自的版本。 -#}
+  <div class="fg-wb is-static">
+    <span class="fg-wb__k">设备</span>
+    <span class="fg-wb__v">{{ dev_value if dev_value is not none else '—' }}</span>
+    <span class="fg-wb__s">{{ dev_sub }}</span>
+  </div>
+</div>
+
+{#- 2026-11-03 用户要求「首页只看今天」，往期没处置的告警就不再进队列了。
+    但这套系统是防跌倒的——把没处理完的旧告警藏得干干净净是不负责任的，
+    所以白板下面留一行、带链接；没有积压时整行不渲染。
+    ⚠️ 必须放在 .fg-whiteboard **外面**：白板卡片整块是 `<a>`，里面不能再嵌链接。 -#}
+{% if backlog %}
+<p class="fg-wb-backlog">
+  往期还有 <b>{{ backlog }}</b> 条未处置（不在今天的队列里）
+  <a href="/alerts?disposition=PENDING,ACKED,ON_SCENE&test=0&from=&to=">看全部</a>
+</p>
+{% endif %}
+</div>
+
+{# ---------- 门灯状态带（V2 新增） ----------
+   门灯原来住在侧栏第三个面板里，桌面首屏要滚很久才看得见——而它是这套界面
+   唯一「一眼扫全病区」的入口。V2 把它提到主区顶部、与白板同层，
+   并做成不带面板壳的条：它是背景信息，不是主角，所以不给它卡片。 #}
+<section class="fg-statusband fg-col-12" id="device-strip"
+         data-refresh-region="device-strip" aria-label="病区点位状态">
+  <span class="fg-statusband__label">点位</span>
+  {% if point_rows or orphan_devices %}
+    <div class="fg-doorbar">
+      {#- 一盏灯一个点位：有设备的并进设备状态，没设备的也能点开看画面。 -#}
+      {% for p in point_rows %}{{ pointlight(p, cur, cp) }}{% endfor %}
+      {#- 没挂点位的老设备：沿用旧门灯，不能因为改版就看不见。 -#}
+      {% for d in orphan_devices %}
+        {{ doorlight(d, pending_by_location.get(d.live_light_key or d.device_code, 0), point_link=true) }}
+      {% endfor %}
+    </div>
+  {% else %}
+    {#- P12：零区域的护士看到「尚未配置点位」会以为是系统没配好，
+        其实点位都在，只是不属于他。两句话必须分开。 -#}
+    <span class="fg-statusband__empty">{{ '你还没有负责的区域' if no_zone else '尚未配置点位' }}</span>
+  {% endif %}
+</section>
+
+<div class="fg-split fg-split--work fg-col-12">
+  {# ---------- 主区：处置队列 ----------
+     一行一条，行内**不放动作按钮**：动作在工作区里做。
+     行是「选谁」的开关，不是「做什么」的开关——两个可点目标挨在一起，
+     误点「标记误报」这种不可撤销的操作代价太高。 #}
+  <div class="fg-split__main fg-stack">
+    <section class="fg-panel" aria-labelledby="worklist-title" data-refresh-region="worklist">
+      <div class="fg-panel__head">
+        <h2 class="fg-panel__title" id="worklist-title">处置队列</h2>
+        {#- 点位筛选条：只在筛上时出现，点 ✕ 回全病区。
+            没有它，护士会以为「这个点位就这几条」——筛过的列表必须自证筛过。 -#}
+        {% if cp %}
+        {#- 多选时名字会长到装不下（1440 的队列头只有 ≈430px，实测「4F-B 东走廊、
+            4F-B 西走廊」被截成「4F-B 东走廊…」——读起来像只筛了一个）。
+            所以**个数写在前面**：先保住「筛了几个」，名字排后面，截断只损失名字。
+            完整名单挂在 title 上，鼠标停上去能看全。 -#}
+        <span class="fg-filterchip">
+          <span class="fg-filterchip__k">点位{% if cp|length > 1 %} {{ cp|length }} 个{% endif %}</span>
+          <span class="fg-filterchip__v" title="{{ cp_label }}">{{ cp_label }}</span>
+          <a class="fg-filterchip__x"
+             href="?disposition={{ cur }}"
+             data-workspace-open
+             aria-label="取消点位筛选，回到全病区">{{ icon('x', 14) }}</a>
+        </span>
+        {% endif %}
+        <div class="fg-panel__actions">
+          <a class="fg-btn fg-btn--ghost fg-btn--sm" href="{{ go_href }}">在告警中心查看</a>
+        </div>
+      </div>
+
+      <nav class="fg-tabs" aria-label="按处置状态切换队列">
+        {% for key, label in segments %}
+        {% set active = (cur == key) %}
+        {#- data-workspace-open：切 Tab 和点行走同一条局部刷新路径，不整页重载。
+            切段不带 focus —— 新段的第一条由服务端补上。
+            ⚠️ 点位筛选要**跟着 Tab 走**：不带上就变成「切个 Tab 筛选悄悄没了」。 -#}
+        <a class="fg-tab {% if active %}is-active{% endif %}"
+           href="?disposition={{ key }}{{ cp_qs }}"
+           data-workspace-open
+           {% if active %}aria-current="page"{% endif %}>
+          {{ label }}
+          <span class="fg-tab__count">{{ qc[key] or 0 }}</span>
+        </a>
+        {% endfor %}
+      </nav>
+
+      <div class="fg-panel__body fg-panel__body--flush">
+        {% if rows %}
+        <div class="fg-wq-list">
+          {% for row in rows %}
+          {#- 选中态按「工作区正在显示哪条」判断，不是按点击记忆：
+              刷新后依然正确，前进/后退也对得上。 -#}
+          {% set active = (focus_event is defined and focus_event and focus_event.event_uid == row.event_uid) %}
+          <a class="fg-wq {% if active %}is-active{% endif %}"
+             href="?disposition={{ cur }}&focus={{ row.event_uid }}{{ cp_qs }}"
+             data-workspace-open
+             {% if active %}aria-current="true"{% endif %}>
+            <span class="fg-wq__time">{{ fmt_time(row.received_at, '%m-%d') }}<b>{{ fmt_time(row.received_at, '%H:%M') }}</b></span>
+            <span class="fg-wq__sev">{{ sev_tag(row.severity) }}</span>
+            <span class="fg-wq__loc">{{ row.location or '—' }}</span>
+            <span class="fg-wq__person">人员#{{ row.person_id if row.person_id is not none else '—' }}</span>
+            <span class="fg-wq__who">
+              {%- if cur == 'CLOSED' -%}
+                {{ disposition_tag(row.disposition_state) }}
+              {%- elif row.assignee_name -%}
+                {{ row.assignee_name }}
+              {%- endif -%}
+            </span>
+            {% if cur == 'CLOSED' %}
+            <span class="fg-wq__wait is-done">{{ fmt_time(row.resolved_at or row.received_at, '%H:%M') }}</span>
+            {% else %}
+            {#- iso() 输出带 T 的严格 ISO-8601：toDate() 走 new Date()，
+                直接写 datetime 会带 6 位微秒，V8 能容错但不是契约。 -#}
+            <span class="fg-wq__wait" data-wait-since="{{ iso(row.received_at) }}">--:--</span>
+            {% endif %}
+          </a>
+          {% endfor %}
+        </div>
+        {% if rows|length >= 30 %}
+        <div class="fg-panel__foot">
+          <span class="fg-small fg-muted">只显示最近 30 条</span>
+          <a class="fg-btn fg-btn--secondary fg-btn--sm" href="{{ go_href }}">查看全部</a>
+        </div>
+        {% endif %}
+        {% else %}
+          {#- P12 决策 2（2026-11-04 补做）：零区域时**四段都会是 0**，
+              逐段说「这一段没有事件」会让人以为今天真的没事。
+              这里优先说清根因。见 alerts.html 同处注释。 -#}
+          {%- if no_zone -%}
+          {{ empty_state('你还没有负责的区域',
+                         '请联系本病区护士长为你分配区域。分配后，属于你的告警会自动出现在这里。',
+                         '', '', 'lock') }}
+          {%- elif cp -%}
+          {#- 筛过之后再空，必须说清是「这些点位没有」而不是「病区没有」——
+              空列表 + 一条筛选条太容易被读成「今天没事」。 -#}
+          {{ empty_state(cp_label ~ ' 在这一段没有事件',
+                         '', '看全部点位', '?disposition=' ~ cur, 'check') }}
+          {%- else -%}
+          {{ empty_state(seg_empty[cur], '', '', '', 'check') }}
+          {%- endif -%}
+        {% endif %}
+      </div>
+    </section>
+  </div>
+
+  {# ---------- 右栏：工作区 ----------
+     复用 event_detail.html：快照、双状态、信息、处置结果表单、时间线全在里面，
+     不重写一份。detail_embedded=true 去掉「关闭」按钮（这里不是抽屉，没有可关的东西），
+     detail_actions_hidden=true 去掉正文里的动作按钮——它们搬到面板顶部的动作条上了。
+
+     sticky + 内部滚动：左栏再长，工作区也停在视野里——接警时不用先把页面滚回去。 #}
+  <aside class="fg-split__side fg-work" aria-label="处置工作区" data-refresh-region="workspace"
+         {#- 服务端算出来的「这一屏正在显示哪条」。URL 里没带 focus 时，app.js 用它
+             把地址补齐 —— 否则动作后的自动刷新会重新取 rows[0]，工作区就跳走了。 -#}
+         data-focus-uid="{{ focus_event.event_uid if focus_event is defined and focus_event else '' }}">
+    <section class="fg-panel fg-work__panel">
+      <div class="fg-panel__head">
+        <h2 class="fg-panel__title">工作区</h2>
+      </div>
+      {#- 动作条钉在面板顶部，不随内容滚走。
+          放顶部而不是底部：面板从页面 400px 处才开始，底部动作条首屏根本看不见；
+          而且接完警重渲染后，下一条动作仍落在同一个位置——护士不用边滚边找。
+          闭环态不给动作条：那条只剩「去处理下一条」，与正文里的收尾提示重复。 -#}
+      {% if focus_event is defined and focus_event %}
+        {% set ev_state = focus_event.disposition_state %}
+        {% if (user.role == 'nurse' and ev_state in ('PENDING', 'ACKED', 'ON_SCENE'))
+              or (user.role == 'head_nurse' and ev_state in ('RESOLVED', 'FALSE_ALARM', 'CLOSED')) %}
+        <div class="fg-work__bar">
+          {{ detail_actions(focus_event, user.role) }}
+        </div>
+        {% endif %}
+      {% endif %}
+      <div class="fg-panel__body fg-work__body">
+        {% if focus_event is defined and focus_event %}
+          {% set event = focus_event %}
+          {% set detail_embedded = true %}
+          {#- 动作按钮已经在面板顶部的 fg-work__bar 里，正文里不再画一遍。
+              处置结果表单**不藏**：顶部「完成处置」要靠展开它才能提交。 -#}
+          {% set detail_actions_hidden = true %}
+          {% include "event_detail.html" %}
+          {% if focus_event.disposition_state in ('RESOLVED', 'FALSE_ALARM', 'CLOSED') %}
+          <div class="fg-work__done">
+            <span>这条已闭环</span>
+            {#- 带上点位筛选：护士是「在这个点位里」往下走的，一按就跳回全病区会让人以为筛丢了。 -#}
+            <a class="fg-btn fg-btn--secondary fg-btn--sm"
+               href="?disposition=PENDING{{ cp_qs }}">去处理下一条</a>
+          </div>
+          {% endif %}
+        {% else %}
+          {{ empty_state('还没有选中事件', '', '', '', 'inbox') }}
+        {% endif %}
+      </div>
+    </section>
+  </aside>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{#- 播放器与骨架叠加都在 /nurse/camera/{point_id}，本页不引。
+    工作区的行切换由 app.js 的 loadWorkspace() 接管（data-workspace-open）。 -#}
+{% endblock %}

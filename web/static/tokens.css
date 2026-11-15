@@ -1,0 +1,244 @@
+/* ==========================================================================
+   衡护 HENGUARD · 设计 Token
+   说明：本文件只定义变量，不写任何选择器样式；页面禁止写魔法 hex / px。
+   圆角只用 0 / 2 / 4px，禁止 8px 以上圆角。
+   ========================================================================== */
+
+:root {
+  /* ===== Brand / Primary ===== */
+  --fg-pine-50: #EAF4F0;
+  --fg-pine-100: #D6E9E2;
+  --fg-pine-200: #AFD4C8;
+  --fg-pine-300: #7FB8A8;
+  --fg-pine-400: #4E9585;
+  --fg-pine-500: #2A7868;
+  --fg-pine-600: #0E5A4E;
+  --fg-pine-700: #0A463D;
+  --fg-pine-800: #07362F;
+  --fg-pine-900: #052822;
+  --fg-pine-950: #031A16;
+
+  /* ===== Neutral ===== */
+  --fg-neutral-0: #FFFFFF;
+  --fg-neutral-50: #F8FAF7;
+  --fg-neutral-100: #EDF1EE;
+  --fg-neutral-200: #DDE4DF;
+  --fg-neutral-300: #C7D1CB;
+  --fg-neutral-400: #A5B1AA;
+  --fg-neutral-500: #7E8B84;
+  --fg-neutral-600: #5C6B65;
+  --fg-neutral-700: #3E4C46;
+  --fg-neutral-800: #26332E;
+  --fg-neutral-900: #14201C;
+  --fg-neutral-950: #0B1310;
+
+  /* ===== Semantic ===== */
+  --fg-danger-50: #FCF1EF;
+  --fg-danger-100: #F7E3E0;
+  --fg-danger-600: #C63C32;
+  --fg-danger-700: #9E2B24;
+
+  --fg-warning-50: #FCF6EA;
+  --fg-warning-100: #F8EBD5;
+  --fg-warning-600: #B26A00;
+  --fg-warning-700: #8A5200;
+
+  --fg-success-50: #F0F8F3;
+  --fg-success-100: #DDEFE3;
+  --fg-success-600: #2E7D4F;
+  --fg-success-700: #23633E;
+
+  --fg-info-50: #F0F6F9;
+  --fg-info-100: #DDEBF2;
+  --fg-info-600: #2F6F8F;
+  --fg-info-700: #245A75;
+
+  --fg-accent-50: #FBF5E8;
+  --fg-accent-100: #F3E4C3;
+  --fg-accent-500: #D9A441;
+  --fg-accent-600: #C9973F;
+  --fg-accent-700: #A8782B;
+  /* 浅底专用：accent-700 对 #F8FAF7 只有 3.72:1，14px 文字不达标；
+     但 accent-700 同时是 --fg-brass，深色导航选中态的方块靠它（对 #0B2B26 3.88:1），
+     不能直接调暗。所以另起一档只给浅底文字用。 */
+  --fg-accent-800: #7F5A1B;
+
+  /* ===== Surfaces / Text / Borders ===== */
+  --fg-bg-canvas: #EDF1EE;
+  --fg-bg-surface: #F8FAF7;
+  --fg-bg-raised: #FFFFFF;
+  --fg-bg-nav: #0B2B26;
+  --fg-bg-nav-hover: #123B34;
+  --fg-bg-nav-active: #174A41;
+  --fg-bg-table-head: #EDF1EE;
+  --fg-bg-table-zebra: #F6F9F6;
+  --fg-bg-table-hover: #EAF2EE;
+  --fg-bg-table-selected: #D8E8E2;
+  --fg-bg-video: #0A1210;
+  --fg-bg-overlay: rgba(11, 19, 16, .40);
+
+  --fg-text-primary: #14201C;
+  --fg-text-secondary: #3E4C46;
+  --fg-text-tertiary: #5C6B65;
+  --fg-text-disabled: #A5B1AA;
+  --fg-text-inverse: #F8FAF7;
+  --fg-text-nav: #D6E9E2;
+  --fg-text-nav-muted: #8FBDAF;
+  --fg-link: #0E5A4E;
+  --fg-link-hover: #0A463D;
+
+  --fg-border-subtle: #E6ECE8;
+  --fg-border-default: #DDE4DF;
+  --fg-border-strong: #C7D1CB;
+  /* 表单控件的 1px 边框专用。输入框是纯白填充、和卡片底只差 1.05:1，
+     边框是唯一能看出「这里有个输入区」的线索；border-strong 在白底上
+     只有 1.57:1，低于非文字控件 3:1（WCAG 1.4.11）。这一档 3.55:1。 */
+  --fg-border-control: #7E8B84;
+  --fg-border-focus: #0E5A4E;
+  --fg-border-nav: rgba(214, 233, 226, .14);
+
+  /* ===== Status（处置态五态） ===== */
+  --fg-status-pending-fg: #A32A20;
+  --fg-status-pending-bg: #F9E3DF;
+  --fg-status-pending-border: #E7B4AC;
+  --fg-status-pending-dot: #C63C32;
+
+  --fg-status-ack-fg: #245A75;
+  --fg-status-ack-bg: #DFECF2;
+  --fg-status-ack-border: #B7D2DF;
+  --fg-status-ack-dot: #2F6F8F;
+
+  --fg-status-resolved-fg: #23633E;
+  --fg-status-resolved-bg: #DDEFE3;
+  --fg-status-resolved-border: #B4D8C2;
+  --fg-status-resolved-dot: #2E7D4F;
+
+  --fg-status-retracted-fg: #4F5B55;
+  --fg-status-retracted-bg: #E8EDE9;
+  --fg-status-retracted-border: #C9D2CD;
+  --fg-status-retracted-dot: #66736D;
+
+  --fg-status-false-fg: #7A5200;
+  --fg-status-false-bg: #F6ECD6;
+  --fg-status-false-border: #E3CFA4;
+  --fg-status-false-dot: #9A6700;
+
+  /* ===== Radius（V1 只用 0 / 2 / 4） ===== */
+  --fg-radius-none: 0;
+  --fg-radius-xs: 2px;
+  --fg-radius-sm: 4px;
+
+  /* ===== Spacing（4px 基数） ===== */
+  --fg-space-0: 0;
+  --fg-space-0-5: 2px;
+  --fg-space-1: 4px;
+  --fg-space-2: 8px;
+  --fg-space-3: 12px;
+  --fg-space-4: 16px;
+  --fg-space-5: 20px;
+  --fg-space-6: 24px;
+  --fg-space-8: 32px;
+  --fg-space-10: 40px;
+  --fg-space-12: 48px;
+  --fg-space-14: 56px;
+  --fg-space-16: 64px;
+  --fg-space-20: 80px;
+  --fg-space-24: 96px;
+
+  /* ===== Type =====
+     字体栈顺序 = Windows → macOS → Linux → 兜底。三个平台各自第一个命中的，
+     就是它的系统 UI 字体；靠顺序保证「同一页在不同机器上字宽一致」。
+     ⚠️ 不引中文字体文件：服务器出网实测 4.78 Mbps，中文子集动辄 2–5 MB，
+        会和实时画面抢带宽 ⇒ 中文一律走系统字体。
+     ⭐ 2026-11-11 unslop 审计：原首项 "IBM Plex Sans" 已删 —— 全项目没有这个字体文件
+        （static/fonts 只有 Plex Mono 的 Regular/Medium/SemiBold），写了也永不命中，是一行假声明。
+        **现在的真实决定**：V1 的数字就用 UI 字体（所以 --fg-font-num 直接别名 --fg-font-ui），
+        V2 由 theme-light-v2.css 覆盖成 Plex Mono。两者不同是**有理由的迁移差异**，不是漏改。
+        要统一到 Mono 得先解决 5 栏 KPI 宽度：100.0% 在 48px 等宽下需 166.8px，
+        1366 屏卡片内容宽只有 150.0px（浏览器实测）⇒ 会折行，2026-11-10 已拍板维持现状。 */
+  --fg-font-ui: "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC", "Hiragino Sans GB", "Source Han Sans SC", "Source Han Sans CN", "Noto Sans CJK SC", "Noto Sans SC", sans-serif;
+  --fg-font-num: var(--fg-font-ui);
+  --fg-font-mono: "IBM Plex Mono", "Cascadia Code", "SFMono-Regular", Consolas, monospace;
+
+  --fg-text-display: 48px;
+  --fg-leading-display: 52px;
+  --fg-text-h1: 32px;
+  --fg-leading-h1: 40px;
+  --fg-text-h2: 24px;
+  --fg-leading-h2: 32px;
+  --fg-text-h3: 20px;
+  --fg-leading-h3: 28px;
+  --fg-text-h4: 18px;
+  --fg-leading-h4: 26px;
+  --fg-text-body-lg: 18px;
+  --fg-leading-body-lg: 30px;
+  --fg-text-body: 16px;
+  --fg-leading-body: 26px;
+  --fg-text-body-sm: 14px;
+  --fg-leading-body-sm: 22px;
+  --fg-text-caption: 12px;
+  --fg-leading-caption: 18px;
+
+  /* ===== Shadows / Motion ===== */
+  --fg-shadow-none: none;
+  --fg-shadow-popover: 0 8px 24px rgba(20, 32, 28, .12);
+  --fg-shadow-drawer: -8px 0 32px rgba(20, 32, 28, .12);
+  --fg-shadow-modal: 0 12px 32px rgba(20, 32, 28, .16);
+
+  --fg-motion-fast: 120ms;
+  --fg-motion-base: 180ms;
+  --fg-motion-slow: 240ms;
+  --fg-ease-out: cubic-bezier(.2, .8, .2, 1);
+  --fg-ease-in-out: cubic-bezier(.4, 0, .2, 1);
+
+  /* ===== Layout ===== */
+  --fg-nav-w: 248px;
+  --fg-nav-w-collapsed: 80px;
+  --fg-topbar-h: 72px;
+  --fg-page-header-h: 80px;
+  --fg-page-x: 32px;
+  --fg-grid-gap: 24px;
+  --fg-side-w: 360px;
+  --fg-drawer-w: 480px;
+  --fg-drawer-w-wide: 640px;
+  --fg-modal-w: 640px;
+  --fg-modal-w-wide: 880px;
+  --fg-table-head-h: 48px;
+  --fg-table-row-h: 56px;
+
+  /* ===== V1 语义别名（app.css 只使用这一段与上面的原 token） ===== */
+  --fg-primary: var(--fg-pine-600);
+  --fg-primary-deep: var(--fg-bg-nav);
+  --fg-primary-soft: var(--fg-bg-nav-active);
+  --fg-canvas: var(--fg-bg-canvas);
+  --fg-surface: var(--fg-bg-surface);
+  --fg-border: var(--fg-border-default);
+  --fg-text: var(--fg-text-primary);
+  --fg-text-muted: var(--fg-text-tertiary);
+  --fg-brass: var(--fg-accent-700);
+
+  /* ===== 五态告警色（设计文档 4.2；必须色 + 文字 + 形状三重编码） ===== */
+  --fg-s1: #B3261E;
+  /* s2/s3 只承载 12px 文字（标签、级别列），原值对各自底色只有 4.40 / 4.25:1，
+     不到 4.5。调深保留色相：s2 对 #FBE9DF = 5.52:1、s3 对 #F4EFDD = 6.07:1。 */
+  --fg-s2: #A63A00;
+  --fg-s3: #6E5616;
+  --fg-s2-bg: #FBE9DF;
+  --fg-s2-border: #EBC3A9;
+  --fg-s3-bg: #F4EFDD;
+  --fg-s3-border: #DDD0A8;
+  --fg-retracted: #6B7280;
+  --fg-closed: #2F6B4F;
+
+  /* ===== 门灯（走廊呼叫灯的隐喻；不新增色相，全部取自既有色阶） ===== */
+  --fg-doorlight-ok: #2E7D4F;      /* 在线、无待办 */
+  --fg-doorlight-idle: #7FB8A8;    /* 在线、安静 */
+  --fg-doorlight-alert: #B3261E;   /* 有待处置 */
+  --fg-doorlight-halo: rgba(179, 38, 30, .16);
+
+  /* ⚰️ 2026-11-11：这里短暂存在过一组 `--fg-lamp-core/lamp/mid/deep/floor`
+     （走廊尽头那盏灯的暖红亮度阶，为登录页的第一版主视觉"夜里的走廊"而加）。
+     当天那条走廊就被整个换掉了（用户：「你不一定一定要这种样式」），
+     而那五个 token **只有走廊一个消费者** ⇒ 跟着一起删，不留死变量。
+     若日后还要画"发光的门"，颜色请从 --fg-s1 起手，别再新起一组暖红。 */
+}
